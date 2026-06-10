@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex">
+<title>Report an Issue — Andersen Springs HOA</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#FAF7F2;
+    --card:#FFFFFF;
+    --ink:#26211A;
+    --ink-soft:#6E6357;
+    --line:#E5DDD0;
+    --accent:#4A7C59;
+    --accent-deep:#3A6347;
+    --clay:#C0653A;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    line-height:1.45;
+    padding:18px 16px 56px;
+    max-width:520px;
+    margin:0 auto;
+  }
+  header{margin-bottom:20px;}
+  .eyebrow{
+    font-size:12px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--accent-deep);font-weight:600;margin-bottom:4px;
+  }
+  h1{font-size:26px;font-weight:700;letter-spacing:-.02em;}
+  .sub{color:var(--ink-soft);font-size:15px;margin-top:6px;}
+
+  .step{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    margin-bottom:14px;
+  }
+  .step-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px;}
+  .step-num{
+    flex:none;width:24px;height:24px;border-radius:50%;
+    background:var(--accent);color:#fff;
+    font-size:13px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;
+    transform:translateY(3px);
+  }
+  .step h2{font-size:17px;font-weight:650;}
+  .optional{font-size:12px;color:var(--ink-soft);font-weight:400;margin-left:auto;}
+
+  /* Location */
+  #loc-status{font-size:14px;color:var(--ink-soft);}
+  #loc-status.ok{color:var(--accent-deep);font-weight:600;}
+  #loc-status.err{color:var(--clay);}
+  .pulse{
+    display:inline-block;width:9px;height:9px;border-radius:50%;
+    background:var(--accent);margin-right:7px;
+    animation:pulse 1.4s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(74,124,89,.45);}
+    100%{box-shadow:0 0 0 11px rgba(74,124,89,0);}
+  }
+  @media (prefers-reduced-motion: reduce){.pulse{animation:none;}}
+  #map{
+    height:230px;border-radius:10px;margin-top:12px;
+    border:1px solid var(--line);
+    display:none;
+  }
+  #map.show{display:block;}
+  .map-hint{
+    display:none;font-size:13px;color:var(--ink-soft);margin-top:8px;
+  }
+  .map-hint.show{display:block;}
+  .btn-ghost{
+    margin-top:10px;
+    background:none;border:1px solid var(--line);border-radius:9px;
+    padding:9px 14px;font-size:14px;color:var(--ink);
+    font-family:inherit;cursor:pointer;
+  }
+
+  /* Photo */
+  #photo-input{display:none;}
+  .photo-btn{
+    width:100%;border:1.5px dashed var(--line);border-radius:10px;
+    background:none;padding:22px 14px;
+    font-size:15px;color:var(--ink-soft);font-family:inherit;cursor:pointer;
+  }
+  .photo-btn:active{background:#F3EEE6;}
+  #photo-preview-wrap{display:none;position:relative;}
+  #photo-preview{width:100%;border-radius:10px;display:block;}
+  #photo-remove{
+    position:absolute;top:8px;right:8px;
+    background:rgba(38,33,26,.78);color:#fff;border:none;border-radius:8px;
+    padding:6px 12px;font-size:13px;font-family:inherit;cursor:pointer;
+  }
+
+  /* Text fields */
+  textarea,input[type=email]{
+    width:100%;border:1px solid var(--line);border-radius:10px;
+    padding:12px;font-size:16px;font-family:inherit;color:var(--ink);
+    background:#FDFCFA;
+  }
+  textarea{min-height:96px;resize:vertical;}
+  textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;}
+  .field-note{font-size:12.5px;color:var(--ink-soft);margin-top:7px;}
+
+  /* Honeypot */
+  .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;}
+
+  /* Submit */
+  #submit-btn{
+    width:100%;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    padding:16px;font-size:17px;font-weight:650;font-family:inherit;
+    cursor:pointer;margin-top:4px;
+  }
+  #submit-btn:disabled{background:#C9C2B6;cursor:not-allowed;}
+  #submit-btn:not(:disabled):active{background:var(--accent-deep);}
+  #submit-note{
+    text-align:center;font-size:13px;color:var(--ink-soft);margin-top:10px;
+  }
+  #error-box{
+    display:none;background:#FBEEE7;border:1px solid #E8C4AE;color:#8A4524;
+    border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:14px;
+  }
+
+  /* Success screen */
+  #success{display:none;text-align:center;padding:48px 10px;}
+  #success .mark{
+    width:64px;height:64px;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:32px;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 18px;
+  }
+  #success h2{font-size:23px;margin-bottom:8px;}
+  #success p{color:var(--ink-soft);font-size:15px;}
+
+  footer{
+    margin-top:26px;text-align:center;
+    font-size:12px;color:var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Andersen Springs HOA</div>
+  <h1>Report an issue</h1>
+  <p class="sub">Spotted something that needs attention — a broken sprinkler, a light that's out, damage in a common area? Tell us in under a minute. Every field is optional except where the issue is.</p>
+</header>
+
+<div id="form-view">
+
+  <div id="error-box"></div>
+
+  <!-- STEP 1: LOCATION -->
+  <section class="step" id="step-location">
+    <div class="step-head">
+      <div class="step-num">1</div>
+      <h2>Where is it?</h2>
+    </div>
+    <div id="loc-status"><span class="pulse"></span>Finding your location&hellip;</div>
+    <div id="map" role="application" aria-label="Map for choosing the issue location"></div>
+    <div class="map-hint" id="map-hint">Tap the map to place the pin where the issue is. Drag to fine-tune.</div>
+    <button type="button" class="btn-ghost" id="adjust-btn" style="display:none">Adjust pin on map</button>
+  </section>
+
+  <!-- STEP 2: PHOTO -->
+  <section class="step">
+    <div class="step-head">
+      <div class="step-num">2</div>
+      <h2>Add a photo</h2>
+      <span class="optional">optional</span>
+    </div>
+    <input type="file" id="photo-input" accept="image/*" capture="environment">
+    <button type="button" class="photo-btn" id="photo-btn">📷 &nbsp;Take or choose a photo</button>
+    <div id="photo-preview-wrap">
+      <img id="photo-preview" alt="Photo of the reported issue">
+      <button type="button" id="photo-remove">Remove</button>
+    </div>
+  </section>
+
+  <!-- STEP 3: DETAILS -->
+  <section class="step">
+    <div class="step-head">
+      <div class="step-num">3</div>
+      <h2>What's going on?</h2>
+      <span class="optional">optional</span>
+    </div>
+    <textarea id="description" placeholder="Example: Sprinkler head broken, water pooling on the sidewalk." maxlength="2000"></textarea>
+  </section>
+
+  <!-- STEP 4: EMAIL -->
+  <section class="step">
+    <div class="step-head">
+      <div class="step-num">4</div>
+      <h2>Your email</h2>
+      <span class="optional">optional</span>
+    </div>
+    <input type="email" id="email" placeholder="you@example.com" autocomplete="email" inputmode="email">
+    <div class="field-note">Used only if we need to follow up on this report. Never shared.</div>
+  </section>
+
+  <!-- Honeypot — bots fill this, humans never see it -->
+  <div class="hp" aria-hidden="true">
+    <label>Leave this field empty<input type="text" id="website" tabindex="-1" autocomplete="off"></label>
+  </div>
+
+  <button id="submit-btn" disabled>Send report</button>
+  <div id="submit-note">Add a photo or a description to send.</div>
+</div>
+
+<div id="success">
+  <div class="mark">✓</div>
+  <h2>Report sent</h2>
+  <p>Thanks for looking out for the neighborhood. Our community manager receives these directly and will get it into the work queue.</p>
+</div>
+
+<footer>Andersen Springs Homeowners Association &middot; Chandler, AZ</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ============ CONFIG — EDIT THESE TWO LINES ============ */
+const SCRIPT_URL = "https://docs.google.com/spreadsheets/d/1k2d4BWGsaw9I2Tzed6mRIsBi1ZNJ_vXugh8zOxzwxkM/edit?usp=sharing";
+const NEIGHBORHOOD_CENTER = [33.3060, -111.8390];  // TODO: set to Andersen Springs center
+/* ======================================================= */
+
+const NEIGHBORHOOD_ZOOM = 16;
+const $ = id => document.getElementById(id);
+
+const state = {
+  lat: null, lng: null,
+  locSource: null,           // "gps" | "pin" | "asset"
+  locId: new URLSearchParams(location.search).get("loc") || "",
+  photoBase64: null,
+  map: null, marker: null
+};
+
+/* ---------- Location ---------- */
+function setLocStatus(html, cls){ const el=$("loc-status"); el.innerHTML=html; el.className=cls||""; }
+
+function locationLocked(lat, lng, source){
+  state.lat = lat; state.lng = lng; state.locSource = source;
+  const label = source === "gps" ? "Location captured from your phone"
+              : "Pin placed on map";
+  setLocStatus("📍 " + label, "ok");
+  $("adjust-btn").style.display = "inline-block";
+  updateSubmit();
+}
+
+function showMap(center){
+  $("map").classList.add("show");
+  $("map-hint").classList.add("show");
+  if (!state.map){
+    state.map = L.map("map").setView(center, NEIGHBORHOOD_ZOOM);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19, attribution: "&copy; OpenStreetMap"
+    }).addTo(state.map);
+    state.map.on("click", e => placePin(e.latlng.lat, e.latlng.lng));
+  } else {
+    state.map.setView(center, NEIGHBORHOOD_ZOOM);
+    setTimeout(()=>state.map.invalidateSize(), 100);
+  }
+  if (state.lat !== null) placePin(state.lat, state.lng, true);
+}
+
+function placePin(lat, lng, keepSource){
+  if (!state.marker){
+    state.marker = L.marker([lat,lng], {draggable:true}).addTo(state.map);
+    state.marker.on("dragend", () => {
+      const p = state.marker.getLatLng();
+      locationLocked(p.lat, p.lng, "pin");
+    });
+  } else {
+    state.marker.setLatLng([lat,lng]);
+  }
+  locationLocked(lat, lng, keepSource ? state.locSource : "pin");
+}
+
+function startGeolocation(){
+  if (!navigator.geolocation){ fallbackToMap("Your browser doesn't support location."); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      locationLocked(pos.coords.latitude, pos.coords.longitude, "gps");
+    },
+    err => {
+      fallbackToMap(err.code === 1
+        ? "Location permission was denied — no problem."
+        : "Couldn't get a GPS fix.");
+    },
+    { enableHighAccuracy:true, timeout:12000, maximumAge:60000 }
+  );
+}
+
+function fallbackToMap(msg){
+  setLocStatus(msg + " Tap the map below to mark where the issue is.", "err");
+  showMap(NEIGHBORHOOD_CENTER);
+}
+
+$("adjust-btn").addEventListener("click", () => {
+  showMap(state.lat !== null ? [state.lat, state.lng] : NEIGHBORHOOD_CENTER);
+});
+
+/* Asset-tagged QR codes (?loc=ID) skip the GPS requirement */
+if (state.locId){
+  state.locSource = "asset";
+  setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
+  $("adjust-btn").style.display = "inline-block";
+  updateSubmit();
+} else {
+  startGeolocation();
+}
+
+/* ---------- Photo (client-side compression) ---------- */
+$("photo-btn").addEventListener("click", () => $("photo-input").click());
+$("photo-input").addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const MAX = 1600;
+    let w = img.width, h = img.height;
+    if (Math.max(w,h) > MAX){
+      const s = MAX / Math.max(w,h);
+      w = Math.round(w*s); h = Math.round(h*s);
+    }
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    state.photoBase64 = c.toDataURL("image/jpeg", 0.82);
+    $("photo-preview").src = state.photoBase64;
+    $("photo-preview-wrap").style.display = "block";
+    $("photo-btn").style.display = "none";
+    URL.revokeObjectURL(url);
+    updateSubmit();
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); showError("That file couldn't be read as an image."); };
+  img.src = url;
+});
+$("photo-remove").addEventListener("click", () => {
+  state.photoBase64 = null;
+  $("photo-input").value = "";
+  $("photo-preview-wrap").style.display = "none";
+  $("photo-btn").style.display = "block";
+  updateSubmit();
+});
+
+/* ---------- Submit gating: discard-if-empty rule ---------- */
+function hasContent(){
+  return !!(state.photoBase64 || $("description").value.trim());
+}
+function hasLocation(){
+  return state.locSource === "asset" || state.lat !== null;
+}
+function updateSubmit(){
+  const ok = hasContent() && hasLocation();
+  $("submit-btn").disabled = !ok;
+  $("submit-note").textContent = ok
+    ? "Sends straight to the community manager."
+    : !hasContent()
+      ? "Add a photo or a description to send."
+      : "Waiting for a location — allow location access or tap the map.";
+}
+$("description").addEventListener("input", updateSubmit);
+
+function showError(msg){
+  const box = $("error-box");
+  box.textContent = msg;
+  box.style.display = "block";
+  box.scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+/* ---------- Send ---------- */
+$("submit-btn").addEventListener("click", async () => {
+  if ($("website").value) return; // honeypot tripped — silently drop
+  const btn = $("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  $("error-box").style.display = "none";
+
+  const payload = {
+    locId: state.locId,
+    locSource: state.locSource,
+    lat: state.lat,
+    lng: state.lng,
+    description: $("description").value.trim().slice(0,2000),
+    email: $("email").value.trim().slice(0,200),
+    photo: state.photoBase64,            // data URL or null
+    userAgent: navigator.userAgent.slice(0,300)
+  };
+
+  try {
+    // text/plain avoids a CORS preflight, which Apps Script doesn't handle
+    const res = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+    const out = await res.json();
+    if (!out.ok) throw new Error(out.error || "Server rejected the report.");
+    $("form-view").style.display = "none";
+    $("success").style.display = "block";
+    window.scrollTo(0,0);
+  } catch (err) {
+    showError("Couldn't send the report — " + err.message + " Check your signal and try again.");
+    btn.disabled = false;
+    btn.textContent = "Send report";
+  }
+});
+</script>
+</body>
+</html>
