@@ -87,11 +87,12 @@
   }
 
   /* Photo */
-  #photo-input{display:none;}
+  #photo-camera,#photo-library{display:none;}
+  .photo-row{display:flex;gap:10px;}
   .photo-btn{
-    width:100%;border:1.5px dashed var(--line);border-radius:10px;
-    background:none;padding:22px 14px;
-    font-size:15px;color:var(--ink-soft);font-family:inherit;cursor:pointer;
+    flex:1;border:1.5px dashed var(--line);border-radius:10px;
+    background:none;padding:18px 10px;
+    font-size:14px;color:var(--ink-soft);font-family:inherit;cursor:pointer;
   }
   .photo-btn:active{background:#F3EEE6;}
   #photo-preview-wrap{display:none;position:relative;}
@@ -179,8 +180,12 @@
       <h2>Add a photo</h2>
       <span class="optional">optional</span>
     </div>
-    <input type="file" id="photo-input" accept="image/*" capture="environment">
-    <button type="button" class="photo-btn" id="photo-btn">📷 &nbsp;Take or choose a photo</button>
+    <input type="file" id="photo-camera" accept="image/*" capture="environment">
+    <input type="file" id="photo-library" accept="image/*">
+    <div class="photo-row">
+      <button type="button" class="photo-btn" id="camera-btn">📷&nbsp; Take a photo</button>
+      <button type="button" class="photo-btn" id="library-btn">🖼️&nbsp; Choose existing</button>
+    </div>
     <div id="photo-preview-wrap">
       <img id="photo-preview" alt="Photo of the reported issue">
       <button type="button" id="photo-remove">Remove</button>
@@ -228,7 +233,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 /* ============ CONFIG — EDIT THESE TWO LINES ============ */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyync-l7fLACmJETzBl-6yNdy5gH_CbIyoM09xmkm2VRid2jK3gN8dlXzMZXD108CxgQg/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx90aoWcNhh9DEE7hdmpXgm_yiOclc_D5x_UC_rADWbEtzQ7nqWWhrJAVWFH4dkSa6n/exec";
 const NEIGHBORHOOD_CENTER = [33.3060, -111.8390];  // TODO: set to Andersen Springs center
 /* ======================================================= */
 
@@ -319,9 +324,10 @@ if (state.locId){
 }
 
 /* ---------- Photo (client-side compression) ---------- */
-$("photo-btn").addEventListener("click", () => $("photo-input").click());
-$("photo-input").addEventListener("change", e => {
-  const file = e.target.files && e.target.files[0];
+$("camera-btn").addEventListener("click", () => $("photo-camera").click());
+$("library-btn").addEventListener("click", () => $("photo-library").click());
+
+function processPhoto(file){
   if (!file) return;
   const img = new Image();
   const url = URL.createObjectURL(file);
@@ -338,18 +344,23 @@ $("photo-input").addEventListener("change", e => {
     state.photoBase64 = c.toDataURL("image/jpeg", 0.82);
     $("photo-preview").src = state.photoBase64;
     $("photo-preview-wrap").style.display = "block";
-    $("photo-btn").style.display = "none";
+    document.querySelector(".photo-row").style.display = "none";
     URL.revokeObjectURL(url);
     updateSubmit();
   };
   img.onerror = () => { URL.revokeObjectURL(url); showError("That file couldn't be read as an image."); };
   img.src = url;
-});
+}
+
+$("photo-camera").addEventListener("change", e => processPhoto(e.target.files && e.target.files[0]));
+$("photo-library").addEventListener("change", e => processPhoto(e.target.files && e.target.files[0]));
+
 $("photo-remove").addEventListener("click", () => {
   state.photoBase64 = null;
-  $("photo-input").value = "";
+  $("photo-camera").value = "";
+  $("photo-library").value = "";
   $("photo-preview-wrap").style.display = "none";
-  $("photo-btn").style.display = "block";
+  document.querySelector(".photo-row").style.display = "flex";
   updateSubmit();
 });
 
