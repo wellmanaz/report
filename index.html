@@ -143,6 +143,25 @@
   #success h2{font-size:23px;margin-bottom:8px;}
   #success p{color:var(--ink-soft);font-size:15px;}
 
+  /* Intro screen */
+  #intro-view{padding:18px 0 8px;}
+  .intro-lead{font-size:16px;color:var(--ink);margin-bottom:22px;}
+  #start-btn{
+    width:100%;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    padding:20px;font-size:19px;font-weight:700;font-family:inherit;cursor:pointer;
+  }
+  #start-btn:active{background:var(--accent-deep);}
+  .intro-note{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
+
+  /* Report another button */
+  #another-btn{
+    margin-top:24px;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    padding:15px 28px;font-size:16px;font-weight:650;font-family:inherit;cursor:pointer;
+  }
+  #another-btn:active{background:var(--accent-deep);}
+
   /* Uploading overlay */
   #overlay{
     display:none;position:fixed;inset:0;z-index:1000;
@@ -182,10 +201,16 @@
 <header>
   <div class="eyebrow">Andersen Springs HOA</div>
   <h1>Report an issue</h1>
-  <p class="sub">Spotted something that needs attention — a broken sprinkler, a light that's out, damage in a common area? Tell us in under a minute. Every field is optional except where the issue is.</p>
+  <p class="sub">Spotted something that needs attention — a broken sprinkler, a light that's out, damage in a common area? Tell us in under a minute.</p>
 </header>
 
-<div id="form-view">
+<div id="intro-view">
+  <p class="intro-lead">Tap below when you're at or near the issue, so we capture the right location.</p>
+  <button id="start-btn">Report an issue</button>
+  <p class="intro-note">Takes under a minute. A photo or a short description is all we need.</p>
+</div>
+
+<div id="form-view" style="display:none">
 
   <div id="error-box"></div>
 
@@ -254,6 +279,7 @@
   <div class="mark">✓</div>
   <h2>Report sent</h2>
   <p>Thanks for looking out for the neighborhood. Our community manager receives these directly and will get it into the work queue.</p>
+  <button id="another-btn">Report another issue</button>
 </div>
 
 <footer>Andersen Springs Homeowners Association &middot; Chandler, AZ</footer>
@@ -349,15 +375,26 @@ $("adjust-btn").addEventListener("click", () => {
   showMap(state.lat !== null ? [state.lat, state.lng] : NEIGHBORHOOD_CENTER);
 });
 
-/* Asset-tagged QR codes (?loc=ID) skip the GPS requirement */
-if (state.locId){
-  state.locSource = "asset";
-  setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
-  $("adjust-btn").style.display = "inline-block";
-  updateSubmit();
-} else {
-  startGeolocation();
+/* Location is captured only when the user taps "Report an issue", so the GPS
+   fix is fresh — not whatever it was when the page was opened. */
+function beginReport(){
+  $("intro-view").style.display = "none";
+  $("form-view").style.display = "block";
+  window.scrollTo(0,0);
+  if (state.locId){
+    state.locSource = "asset";
+    setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
+    $("adjust-btn").style.display = "inline-block";
+    updateSubmit();
+  } else {
+    startGeolocation();   // fresh GPS request, now
+  }
 }
+$("start-btn").addEventListener("click", beginReport);
+
+/* After a report is sent, reload to return to the intro screen with a clean
+   slate (fresh GPS next time, no leftover photo/text). */
+$("another-btn").addEventListener("click", () => location.reload());
 
 /* ---------- Photo (client-side compression) ---------- */
 $("camera-btn").addEventListener("click", () => $("photo-camera").click());
