@@ -143,6 +143,34 @@
   #success h2{font-size:23px;margin-bottom:8px;}
   #success p{color:var(--ink-soft);font-size:15px;}
 
+  /* Uploading overlay */
+  #overlay{
+    display:none;position:fixed;inset:0;z-index:1000;
+    background:rgba(38,33,26,.55);
+    align-items:center;justify-content:center;
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  }
+  #overlay.show{display:flex;}
+  .overlay-card{
+    background:var(--card);border-radius:16px;
+    padding:30px 34px;text-align:center;
+    box-shadow:0 12px 40px rgba(0,0,0,.25);
+    max-width:280px;
+  }
+  .spinner{
+    width:42px;height:42px;margin:0 auto 16px;
+    border:4px solid var(--line);
+    border-top-color:var(--accent);
+    border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion: reduce){
+    .spinner{animation:spin 1.6s linear infinite;}
+  }
+  .overlay-card .msg{font-size:16px;font-weight:600;color:var(--ink);}
+  .overlay-card .sub-msg{font-size:13px;color:var(--ink-soft);margin-top:6px;}
+
   footer{
     margin-top:26px;text-align:center;
     font-size:12px;color:var(--ink-soft);
@@ -229,6 +257,14 @@
 </div>
 
 <footer>Andersen Springs Homeowners Association &middot; Chandler, AZ</footer>
+
+<div id="overlay">
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <div class="msg">Sending your report&hellip;</div>
+    <div class="sub-msg">Uploading the photo and details. This can take a few seconds.</div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
@@ -332,7 +368,7 @@ function processPhoto(file){
   const img = new Image();
   const url = URL.createObjectURL(file);
   img.onload = () => {
-    const MAX = 1600;
+    const MAX = 1280;
     let w = img.width, h = img.height;
     if (Math.max(w,h) > MAX){
       const s = MAX / Math.max(w,h);
@@ -341,7 +377,7 @@ function processPhoto(file){
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
     c.getContext("2d").drawImage(img, 0, 0, w, h);
-    state.photoBase64 = c.toDataURL("image/jpeg", 0.82);
+    state.photoBase64 = c.toDataURL("image/jpeg", 0.75);
     $("photo-preview").src = state.photoBase64;
     $("photo-preview-wrap").style.display = "block";
     document.querySelector(".photo-row").style.display = "none";
@@ -396,6 +432,7 @@ $("submit-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Sending…";
   $("error-box").style.display = "none";
+  $("overlay").classList.add("show");
 
   const payload = {
     locId: state.locId,
@@ -417,10 +454,12 @@ $("submit-btn").addEventListener("click", async () => {
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || "Server rejected the report.");
+    $("overlay").classList.remove("show");
     $("form-view").style.display = "none";
     $("success").style.display = "block";
     window.scrollTo(0,0);
   } catch (err) {
+    $("overlay").classList.remove("show");
     showError("Couldn't send the report — " + err.message + " Check your signal and try again.");
     btn.disabled = false;
     btn.textContent = "Send report";
