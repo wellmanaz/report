@@ -145,6 +145,57 @@
   #success h2{font-size:23px;margin-bottom:8px;}
   #success p{color:var(--ink-soft);font-size:15px;}
 
+  /* Intro screen */
+  #intro-view{padding:18px 0 8px;}
+  .intro-lead{font-size:16px;color:var(--ink);margin-bottom:22px;}
+  #start-btn{
+    width:100%;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    padding:20px;font-size:19px;font-weight:700;font-family:inherit;cursor:pointer;
+  }
+  #start-btn:active{background:var(--accent-deep);}
+  .intro-note{font-size:13px;color:var(--ink-soft);margin-top:14px;text-align:center;}
+  #view-all{
+    display:block;text-align:center;margin-top:28px;
+    font-size:13px;color:var(--ink-soft);text-decoration:underline;
+  }
+
+  /* Report another button */
+  #another-btn{
+    margin-top:24px;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;
+    padding:15px 28px;font-size:16px;font-weight:650;font-family:inherit;cursor:pointer;
+  }
+  #another-btn:active{background:var(--accent-deep);}
+
+  /* Uploading overlay */
+  #overlay{
+    display:none;position:fixed;inset:0;z-index:1000;
+    background:rgba(38,33,26,.55);
+    align-items:center;justify-content:center;
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  }
+  #overlay.show{display:flex;}
+  .overlay-card{
+    background:var(--card);border-radius:16px;
+    padding:30px 34px;text-align:center;
+    box-shadow:0 12px 40px rgba(0,0,0,.25);
+    max-width:280px;
+  }
+  .spinner{
+    width:42px;height:42px;margin:0 auto 16px;
+    border:4px solid var(--line);
+    border-top-color:var(--accent);
+    border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @media (prefers-reduced-motion: reduce){
+    .spinner{animation:spin 1.6s linear infinite;}
+  }
+  .overlay-card .msg{font-size:16px;font-weight:600;color:var(--ink);}
+  .overlay-card .sub-msg{font-size:13px;color:var(--ink-soft);margin-top:6px;}
+
   footer{
     margin-top:26px;text-align:center;
     font-size:12px;color:var(--ink-soft);
@@ -156,10 +207,17 @@
 <header>
   <div class="eyebrow">Andersen Springs HOA</div>
   <h1>Report an issue</h1>
-  <p class="sub">Spotted something that needs attention — a broken sprinkler, a light that's out, damage in a common area? Tell us in under a minute. Every field is optional except where the issue is.</p>
+  <p class="sub">Spotted something that needs attention — a broken sprinkler, a light that's out, damage in a common area? Tell us in under a minute.</p>
 </header>
 
-<div id="form-view">
+<div id="intro-view">
+  <p class="intro-lead">Tap below when you're at or near the issue, so we capture the right location.</p>
+  <button id="start-btn">Report an issue</button>
+  <p class="intro-note">Takes under a minute. A photo or a short description is all we need.</p>
+  <a id="view-all" href="#" target="_blank" rel="noopener" style="display:none">See all reported issues</a>
+</div>
+
+<div id="form-view" style="display:none">
 
   <div id="error-box"></div>
 
@@ -228,6 +286,7 @@
   <div class="mark">✓</div>
   <h2>Report sent</h2>
   <p>Thanks for looking out for the neighborhood. Our community manager receives these directly and will get it into the work queue.</p>
+  <button id="another-btn">Report another issue</button>
 </div>
 
 <footer>
@@ -235,13 +294,22 @@
   <p style="margin-top:8px">Andersen Springs Homeowners Association &middot; Chandler, AZ</p>
 </footer>
 
+<div id="overlay">
+  <div class="overlay-card">
+    <div class="spinner"></div>
+    <div class="msg">Sending your report&hellip;</div>
+    <div class="sub-msg">Uploading the photo and details. This can take a few seconds.</div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
         integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-/* ============ CONFIG — EDIT THESE TWO LINES ============ */
+/* ============ CONFIG — EDIT THESE ============ */
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx90aoWcNhh9DEE7hdmpXgm_yiOclc_D5x_UC_rADWbEtzQ7nqWWhrJAVWFH4dkSa6n/exec";
 const NEIGHBORHOOD_CENTER = [33.3060, -111.8390];  // TODO: set to Andersen Springs center
+const REPORTS_VIEW_URL = "";   // optional: link to a PUBLIC, email-free view of reports (leave "" to hide the link)
 /* ======================================================= */
 
 const NEIGHBORHOOD_ZOOM = 16;
@@ -320,15 +388,32 @@ $("adjust-btn").addEventListener("click", () => {
   showMap(state.lat !== null ? [state.lat, state.lng] : NEIGHBORHOOD_CENTER);
 });
 
-/* Asset-tagged QR codes (?loc=ID) skip the GPS requirement */
-if (state.locId){
-  state.locSource = "asset";
-  setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
-  $("adjust-btn").style.display = "inline-block";
-  updateSubmit();
-} else {
-  startGeolocation();
+/* Location is captured only when the user taps "Report an issue", so the GPS
+   fix is fresh — not whatever it was when the page was opened. */
+function beginReport(){
+  $("intro-view").style.display = "none";
+  $("form-view").style.display = "block";
+  window.scrollTo(0,0);
+  if (state.locId){
+    state.locSource = "asset";
+    setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
+    $("adjust-btn").style.display = "inline-block";
+    updateSubmit();
+  } else {
+    startGeolocation();   // fresh GPS request, now
+  }
 }
+$("start-btn").addEventListener("click", beginReport);
+
+/* Optional "see all reported issues" link — only shown if a URL is set */
+if (REPORTS_VIEW_URL){
+  $("view-all").href = REPORTS_VIEW_URL;
+  $("view-all").style.display = "block";
+}
+
+/* After a report is sent, reload to return to the intro screen with a clean
+   slate (fresh GPS next time, no leftover photo/text). */
+$("another-btn").addEventListener("click", () => location.reload());
 
 /* ---------- Photo (client-side compression) ---------- */
 $("camera-btn").addEventListener("click", () => $("photo-camera").click());
@@ -339,7 +424,7 @@ function processPhoto(file){
   const img = new Image();
   const url = URL.createObjectURL(file);
   img.onload = () => {
-    const MAX = 1600;
+    const MAX = 1280;
     let w = img.width, h = img.height;
     if (Math.max(w,h) > MAX){
       const s = MAX / Math.max(w,h);
@@ -348,7 +433,7 @@ function processPhoto(file){
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
     c.getContext("2d").drawImage(img, 0, 0, w, h);
-    state.photoBase64 = c.toDataURL("image/jpeg", 0.82);
+    state.photoBase64 = c.toDataURL("image/jpeg", 0.75);
     $("photo-preview").src = state.photoBase64;
     $("photo-preview-wrap").style.display = "block";
     document.querySelector(".photo-row").style.display = "none";
@@ -402,6 +487,7 @@ $("submit-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Sending…";
   $("error-box").style.display = "none";
+  $("overlay").classList.add("show");
 
   const payload = {
     locId: state.locId,
@@ -424,10 +510,12 @@ $("submit-btn").addEventListener("click", async () => {
     });
     const out = await res.json();
     if (!out.ok) throw new Error(out.error || "Server rejected the report.");
+    $("overlay").classList.remove("show");
     $("form-view").style.display = "none";
     $("success").style.display = "block";
     window.scrollTo(0,0);
   } catch (err) {
+    $("overlay").classList.remove("show");
     showError("Couldn't send the report — " + err.message + " Check your signal and try again.");
     btn.disabled = false;
     btn.textContent = "Send report";
