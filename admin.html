@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex">
+<title>Crew View — Andersen Springs HOA</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+      integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
+<style>
+  :root{
+    --bg:#FAF7F2; --card:#FFFFFF; --ink:#26211A; --ink-soft:#6E6357;
+    --line:#E5DDD0; --accent:#4A7C59; --accent-deep:#3A6347; --clay:#C0653A;
+    --inproc:#E6A700; --done:#4A7C59;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.45;
+  }
+  button{font-family:inherit;cursor:pointer;}
+
+  /* ---- Login ---- */
+  #login{
+    position:fixed;inset:0;z-index:50;background:var(--bg);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;text-align:center;
+  }
+  #login .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-deep);font-weight:600;}
+  #login h1{font-size:24px;font-weight:700;margin:6px 0 20px;}
+  #login input{
+    width:100%;max-width:320px;border:1px solid var(--line);border-radius:10px;
+    padding:14px;font-size:17px;text-align:center;background:#FDFCFA;color:var(--ink);
+  }
+  #login input:focus{outline:2px solid var(--accent);border-color:transparent;}
+  #login button{
+    width:100%;max-width:320px;margin-top:12px;border:none;border-radius:12px;
+    background:var(--accent);color:#fff;padding:15px;font-size:17px;font-weight:650;
+  }
+  #login-err{color:var(--clay);font-size:14px;margin-top:12px;min-height:18px;}
+  #login .hint{color:var(--ink-soft);font-size:13px;margin-top:18px;}
+
+  /* ---- App ---- */
+  #app{display:none;height:100%;flex-direction:column;}
+  #topbar{
+    flex:none;display:flex;align-items:center;gap:10px;
+    padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line);
+  }
+  #topbar .title{font-weight:700;font-size:15px;}
+  #topbar .who{font-size:12px;color:var(--ink-soft);}
+  #topbar .spacer{flex:1;}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);}
+  #signout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--ink);}
+  #map{flex:1;}
+  .legend{
+    position:absolute;left:10px;bottom:10px;z-index:400;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.12);
+  }
+  .legend .row{display:flex;align-items:center;gap:6px;margin:2px 0;}
+  .dot{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15);}
+
+  /* ---- Detail sheet ---- */
+  #scrim{display:none;position:fixed;inset:0;z-index:600;background:rgba(38,33,26,.45);}
+  #scrim.show{display:block;}
+  #sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:601;background:var(--card);
+    border-radius:18px 18px 0 0;padding:16px 16px 24px;transform:translateY(100%);
+    transition:transform .22s ease;max-height:85vh;overflow:auto;
+    box-shadow:0 -8px 30px rgba(0,0,0,.22);
+  }
+  #sheet.show{transform:translateY(0);}
+  #sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px;}
+  #sheet .pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;color:#fff;}
+  #sheet img{width:100%;border-radius:12px;margin:12px 0;display:block;}
+  #sheet .desc{font-size:16px;margin:6px 0;}
+  #sheet .meta{font-size:13px;color:var(--ink-soft);margin:2px 0;}
+  #sheet textarea{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;margin-top:12px;min-height:64px;resize:vertical;background:#FDFCFA;
+  }
+  .actions{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
+  .actions button{border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:650;color:#fff;}
+  .btn-start{background:var(--inproc);}
+  .btn-done{background:var(--accent);}
+  .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink);}
+  .btn-cancel{background:none;border:1px solid var(--line)!important;color:var(--ink-soft);}
+
+  /* ---- Snackbar ---- */
+  #snack{
+    position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120%);
+    z-index:700;background:#26211A;color:#fff;border-radius:12px;padding:12px 16px;
+    display:flex;align-items:center;gap:16px;font-size:14px;transition:transform .2s ease;
+    box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:90vw;
+  }
+  #snack.show{transform:translateX(-50%) translateY(0);}
+  #snack button{background:none;border:none;color:#FFD27A;font-weight:700;font-size:14px;}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login">
+  <div class="eyebrow">Andersen Springs HOA</div>
+  <h1>Crew View</h1>
+  <input id="pw" type="password" inputmode="text" autocomplete="off" placeholder="Enter password" autofocus>
+  <button id="pw-go">Enter</button>
+  <div id="login-err"></div>
+  <div class="hint">Vendor access only.</div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div id="topbar">
+    <div>
+      <div class="title">Open issues</div>
+      <div class="who" id="who"></div>
+    </div>
+    <div class="spacer"></div>
+    <label class="toggle"><input type="checkbox" id="show-completed"> Show completed</label>
+    <button id="signout">Sign out</button>
+  </div>
+  <div id="map"></div>
+  <div class="legend">
+    <div class="row"><span class="dot" style="background:#C0653A"></span> New</div>
+    <div class="row"><span class="dot" style="background:#E6A700"></span> In Process</div>
+    <div class="row"><span class="dot" style="background:#4A7C59"></span> Complete</div>
+  </div>
+</div>
+
+<!-- DETAIL SHEET -->
+<div id="scrim"></div>
+<div id="sheet">
+  <div class="grab"></div>
+  <span class="pill" id="d-status"></span>
+  <img id="d-photo" alt="Reported issue photo" style="display:none">
+  <p class="desc" id="d-desc"></p>
+  <p class="meta" id="d-area"></p>
+  <p class="meta" id="d-date"></p>
+  <textarea id="d-note" placeholder="Resolution note (optional) — emailed to the reporter if entered"></textarea>
+  <div class="actions" id="d-actions"></div>
+</div>
+
+<div id="snack"><span id="snack-msg"></span><button id="snack-undo">Undo</button></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+/* ============ CONFIG ============ */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx90aoWcNhh9DEE7hdmpXgm_yiOclc_D5x_UC_rADWbEtzQ7nqWWhrJAVWFH4dkSa6n/exec";
+const NEIGHBORHOOD_CENTER = [33.3160, -111.8720];
+const HOME_URL = "index.html";   // where a bad password bounces to
+const PW_KEY = "hoa_admin_pw";
+/* ================================ */
+
+const $ = id => document.getElementById(id);
+let map, markersLayer, vendorName = "", lastReports = [], current = null, snackTimer = null;
+
+const colorFor = s => s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
+const getPw = () => sessionStorage.getItem(PW_KEY) || "";
+const setPw = v => sessionStorage.setItem(PW_KEY, v);
+const clearPw = () => sessionStorage.removeItem(PW_KEY);
+
+async function api(payload){
+  const res = await fetch(SCRIPT_URL, {
+    method:"POST",
+    headers:{ "Content-Type":"text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+/* ---------- Auth ---------- */
+function showLogin(msg){
+  $("app").style.display = "none";
+  $("login").style.display = "flex";
+  $("login-err").textContent = msg || "";
+  $("pw").value = "";
+  $("pw").focus();
+}
+function showApp(){
+  $("login").style.display = "none";
+  $("app").style.display = "flex";
+  if (!map) initMap();
+  setTimeout(() => map.invalidateSize(), 100);
+}
+
+$("pw-go").addEventListener("click", tryLogin);
+$("pw").addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+
+async function tryLogin(){
+  const pw = $("pw").value.trim();
+  if (!pw) return;
+  setPw(pw);
+  $("login-err").textContent = "Checking…";
+  await loadReports(true);
+}
+
+$("signout").addEventListener("click", () => { clearPw(); showLogin(""); });
+
+/* ---------- Map ---------- */
+function initMap(){
+  map = L.map("map").setView(NEIGHBORHOOD_CENTER, 16);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap"
+  }).addTo(map);
+  markersLayer = L.layerGroup().addTo(map);
+  // Center on the crew's position if allowed (doesn't block rendering).
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      p => map.setView([p.coords.latitude, p.coords.longitude], 16),
+      () => {}, { enableHighAccuracy:true, timeout:8000 }
+    );
+  }
+}
+
+function renderReports(reports){
+  lastReports = reports;
+  markersLayer.clearLayers();
+  const pts = [];
+  reports.forEach(r => {
+    const mk = L.circleMarker([r.lat, r.lng], {
+      radius: 10, fillColor: colorFor(r.status), color:"#fff", weight:2, fillOpacity:0.95
+    }).addTo(markersLayer);
+    mk.on("click", () => openDetail(r));
+    pts.push([r.lat, r.lng]);
+  });
+  if (pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
+}
+
+/* ---------- Load ---------- */
+async function loadReports(fromLogin){
+  let out;
+  try { out = await api({ action:"adminList", password:getPw(), includeCompleted: $("show-completed").checked }); }
+  catch(e){ if (fromLogin) $("login-err").textContent = "Network error — try again."; else toast("Network error."); return; }
+
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Incorrect password."); return; }
+    if (fromLogin) $("login-err").textContent = out.error || "Error."; else toast(out.error || "Error.");
+    return;
+  }
+  vendorName = out.vendor || "";
+  $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
+  showApp();
+  renderReports(out.reports || []);
+}
+
+$("show-completed").addEventListener("change", () => loadReports(false));
+
+/* ---------- Detail sheet ---------- */
+function openDetail(r){
+  current = r;
+  $("d-status").textContent = r.status || "New";
+  $("d-status").style.background = colorFor(r.status);
+  if (r.photo){ $("d-photo").src = r.photo; $("d-photo").style.display = "block"; }
+  else { $("d-photo").style.display = "none"; $("d-photo").removeAttribute("src"); }
+  $("d-desc").textContent = r.description || "(no description)";
+  $("d-area").textContent = r.area ? ("📍 " + r.area) : "";
+  $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
+  $("d-note").value = "";
+
+  const actions = $("d-actions");
+  actions.innerHTML = "";
+  if (r.status !== "In Process" && r.status !== "Complete")
+    actions.appendChild(mkBtn("Mark In Process", "btn-start", () => update("In Process")));
+  if (r.status !== "Complete")
+    actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
+  if (r.status === "Complete")
+    actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
+  actions.appendChild(mkBtn("Cancel", "btn-cancel", closeDetail));
+
+  $("scrim").classList.add("show");
+  $("sheet").classList.add("show");
+}
+function mkBtn(label, cls, fn){
+  const b = document.createElement("button");
+  b.textContent = label; b.className = cls; b.addEventListener("click", fn);
+  return b;
+}
+function closeDetail(){
+  $("scrim").classList.remove("show");
+  $("sheet").classList.remove("show");
+  current = null;
+}
+$("scrim").addEventListener("click", closeDetail);
+
+/* ---------- Update ---------- */
+async function update(newStatus){
+  if (!current) return;
+  const id = current.id, wasComplete = newStatus === "Complete";
+  const note = $("d-note").value.trim();
+  closeDetail();
+  let out;
+  try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus, note:note }); }
+  catch(e){ toast("Network error — not saved."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't save."); return;
+  }
+  await loadReports(false);
+  if (wasComplete) snack("Completed ✓", id);
+  else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
+}
+
+/* ---------- Snackbar / toast ---------- */
+function snack(msg, undoId){
+  $("snack-msg").textContent = msg;
+  $("snack-undo").style.display = undoId ? "inline" : "none";
+  $("snack").classList.add("show");
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(() => $("snack").classList.remove("show"), 5000);
+  $("snack-undo").onclick = async () => {
+    $("snack").classList.remove("show");
+    try { await api({ action:"adminUpdate", password:getPw(), id:undoId, status:"In Process", note:"" }); } catch(e){}
+    loadReports(false);
+  };
+}
+function toast(msg){ snack(msg, null); }
+
+/* ---------- Boot: resume session if a password is already stored ---------- */
+if (getPw()) loadReports(false); else showLogin("");
+</script>
+</body>
+</html>
