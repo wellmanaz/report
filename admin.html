@@ -132,6 +132,19 @@
     box-shadow:0 2px 10px rgba(0,0,0,.28);cursor:pointer;
   }
 
+  /* Merge mode banner */
+  #mergebar{
+    display:none;position:fixed;top:0;left:0;right:0;z-index:780;
+    background:var(--accent-deep);color:#fff;padding:11px 14px;
+    align-items:center;gap:12px;font-size:14px;box-shadow:0 2px 10px rgba(0,0,0,.3);
+  }
+  #mergebar.show{display:flex;}
+  #mergebar button{
+    margin-left:auto;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.55);
+    color:#fff;border-radius:8px;padding:6px 12px;font-size:13px;font-family:inherit;cursor:pointer;
+  }
+  .btn-merge{background:none;border:1px solid var(--accent)!important;color:var(--accent-deep);}
+
   /* ---- Detail sheet ---- */
   #scrim{display:none;position:fixed;inset:0;z-index:600;background:rgba(38,33,26,.45);}
   #scrim.show{display:block;}
@@ -226,6 +239,11 @@
   <button id="mapview-close" type="button">✕ Close map</button>
 </div>
 
+<div id="mergebar">
+  <span>Merge mode — tap the report to combine with the one you chose.</span>
+  <button id="mergebar-cancel" type="button">Cancel</button>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
         integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
@@ -238,7 +256,7 @@ const PW_KEY = "hoa_admin_pw";
 /* ================================ */
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null;
+let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null;
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -359,14 +377,14 @@ function drawMarkers(fit){
       const primary = bundlePrimary(visible);
       const mk = L.marker([primary.lat, primary.lng], { icon: bundleIcon(visible) });
       mk.addTo(markersLayer);
-      mk.on("click", () => openBundleDetail(visible));
+      mk.on("click", () => { if (mergeSourceId) mergeWith(primary.id); else openBundleDetail(visible); });
       pts.push([primary.lat, primary.lng]);
     } else {
       // singleton, or a bundle with only one member currently shown
       visible.forEach(r => {
         const mk = singleMarker(r);
         mk.addTo(markersLayer);
-        mk.on("click", () => openDetail(r));
+        mk.on("click", () => { if (mergeSourceId) mergeWith(r.id); else openDetail(r); });
         pts.push([r.lat, r.lng]);
       });
     }
@@ -447,6 +465,7 @@ function openDetail(r){
     actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
   if (r.status === "Complete")
     actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
+  actions.appendChild(mkBtn("Merge with another report", "btn-merge", () => enterMergeMode(r)));
   actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
 
   $("scrim").classList.add("show");
@@ -640,6 +659,30 @@ async function unbundle(id){
   closeDetail();
   await loadReports(false, false);
   toast("Removed from bundle.");
+}
+
+/* ---------- Manual merge ---------- */
+function enterMergeMode(r){
+  mergeSourceId = r.id;
+  closeDetail();
+  $("mergebar").classList.add("show");
+}
+function cancelMerge(){ mergeSourceId = null; $("mergebar").classList.remove("show"); }
+$("mergebar-cancel").addEventListener("click", cancelMerge);
+
+async function mergeWith(targetId){
+  const sourceId = mergeSourceId;
+  cancelMerge();
+  if (!sourceId || sourceId === targetId) return;
+  let out;
+  try { out = await api({ action:"adminMerge", password:getPw(), id:sourceId, otherId:targetId }); }
+  catch(e){ toast("Network error — not merged."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't merge."); return;
+  }
+  await loadReports(false, false);
+  toast("Merged.");
 }
 
 /* ---------- Snackbar / toast ---------- */
