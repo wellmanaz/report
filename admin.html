@@ -255,8 +255,16 @@ function openDetail(r){
   current = r;
   $("d-status").textContent = r.status || "New";
   $("d-status").style.background = colorFor(r.status);
-  if (r.photo){ $("d-photo").src = r.photo; $("d-photo").style.display = "block"; }
-  else { $("d-photo").style.display = "none"; $("d-photo").removeAttribute("src"); }
+  if (r.photo){
+    $("d-photo").src = r.photo;
+    $("d-photo").style.display = "block";
+    $("d-photo").style.cursor = "zoom-in";
+    $("d-photo").onclick = () => { if (r.photoFull) window.open(r.photoFull, "_blank", "noopener"); };
+  } else {
+    $("d-photo").style.display = "none";
+    $("d-photo").removeAttribute("src");
+    $("d-photo").onclick = null;
+  }
   $("d-desc").textContent = r.description || "(no description)";
   $("d-area").textContent = r.area ? ("📍 " + r.area) : "";
   $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
