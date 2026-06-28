@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="robots" content="noindex">
 <title>Report an Issue — Andersen Springs HOA</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+      integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+      crossorigin="anonymous" referrerpolicy="no-referrer">
 <style>
   :root{
     --bg:#FAF7F2;
@@ -287,7 +289,10 @@
   <button id="another-btn">Report another issue</button>
 </div>
 
-<footer>Andersen Springs Homeowners Association &middot; Chandler, AZ</footer>
+<footer>
+  <p>Location, photo, and email (if provided) are collected only to handle your report and are shared only with the community manager. They're never sold or used for marketing.</p>
+  <p style="margin-top:8px">Andersen Springs Homeowners Association &middot; Chandler, AZ</p>
+</footer>
 
 <div id="overlay">
   <div class="overlay-card">
@@ -297,11 +302,13 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
 /* ============ CONFIG — EDIT THESE ============ */
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx90aoWcNhh9DEE7hdmpXgm_yiOclc_D5x_UC_rADWbEtzQ7nqWWhrJAVWFH4dkSa6n/exec";
-const NEIGHBORHOOD_CENTER = [33.3060, -111.8390];  // TODO: set to Andersen Springs center
+const NEIGHBORHOOD_CENTER = [33.3160, -111.8720];  // Andersen Springs center (matches areas.gs)
 const REPORTS_VIEW_URL = "";   // optional: link to a PUBLIC, email-free view of reports (leave "" to hide the link)
 /* ======================================================= */
 
@@ -476,7 +483,6 @@ function showError(msg){
 
 /* ---------- Send ---------- */
 $("submit-btn").addEventListener("click", async () => {
-  if ($("website").value) return; // honeypot tripped — silently drop
   const btn = $("submit-btn");
   btn.disabled = true;
   btn.textContent = "Sending…";
@@ -491,7 +497,8 @@ $("submit-btn").addEventListener("click", async () => {
     description: $("description").value.trim().slice(0,2000),
     email: $("email").value.trim().slice(0,200),
     photo: state.photoBase64,            // data URL or null
-    userAgent: navigator.userAgent.slice(0,300)
+    userAgent: navigator.userAgent.slice(0,300),
+    website: $("website").value          // honeypot — must be empty; server drops if filled
   };
 
   try {
