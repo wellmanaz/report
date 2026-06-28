@@ -79,7 +79,29 @@
     70%{box-shadow:0 0 0 16px rgba(225,25,0,0);}
     100%{box-shadow:0 0 0 0 rgba(225,25,0,0);}
   }
-  @media (prefers-reduced-motion: reduce){ .urgent-pin,.dot.pulse{animation:none;} }
+  @media (prefers-reduced-motion: reduce){ .urgent-pin,.dot.pulse,.bundle-pin.pulse-red{animation:none;} }
+
+  /* Bundle map marker (count badge) */
+  .bundle-marker{background:transparent!important;border:0!important;}
+  .bundle-pin{
+    width:28px;height:28px;border-radius:50%;color:#fff;font-weight:700;font-size:13px;
+    border:2px solid #fff;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 5px rgba(0,0,0,.4);
+  }
+  .bundle-pin.pulse-red{animation:upulse 1.2s ease-out infinite;}
+
+  /* Bundle detail member list */
+  .bmember{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
+  .bmember input{width:18px;height:18px;flex:none;}
+  .bthumb{width:46px;height:46px;border-radius:8px;object-fit:cover;flex:none;cursor:zoom-in;}
+  .btext{min-width:0;flex:1;}
+  .bdesc{font-size:14px;color:var(--ink);}
+  .bmeta{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  #d-bundle textarea{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;margin-top:12px;min-height:60px;resize:vertical;background:#FDFCFA;
+  }
+  #d-bundle .pill{display:inline-block;}
 
   /* ---- Detail sheet ---- */
   #scrim{display:none;position:fixed;inset:0;z-index:600;background:rgba(38,33,26,.45);}
@@ -155,13 +177,16 @@
 <div id="scrim"></div>
 <div id="sheet">
   <div class="grab"></div>
-  <span class="pill" id="d-status"></span>
-  <img id="d-photo" alt="Reported issue photo" style="display:none">
-  <p class="desc" id="d-desc"></p>
-  <p class="meta" id="d-area"></p>
-  <p class="meta" id="d-date"></p>
-  <textarea id="d-note" placeholder="Resolution note (optional) — emailed to the reporter if entered"></textarea>
-  <div class="actions" id="d-actions"></div>
+  <div id="d-single">
+    <span class="pill" id="d-status"></span>
+    <img id="d-photo" alt="Reported issue photo" style="display:none">
+    <p class="desc" id="d-desc"></p>
+    <p class="meta" id="d-area"></p>
+    <p class="meta" id="d-date"></p>
+    <textarea id="d-note" placeholder="Resolution note (optional) — emailed to the reporter if entered"></textarea>
+    <div class="actions" id="d-actions"></div>
+  </div>
+  <div id="d-bundle" style="display:none"></div>
 </div>
 
 <div id="snack"><span id="snack-msg"></span><button id="snack-undo">Undo</button></div>
@@ -178,7 +203,7 @@ const PW_KEY = "hoa_admin_pw";
 /* ================================ */
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", allReports = [], current = null, snackTimer = null, pwFails = 0;
+let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0;
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -248,23 +273,69 @@ function isVisible(r){
   return $("f-open").checked;                       // blank status = Open
 }
 
+function singleMarker(r){
+  return r.urgent
+    ? L.marker([r.lat, r.lng], { icon: L.divIcon({
+        className: "urgent-marker", html: '<div class="urgent-pin"></div>',
+        iconSize: [18, 18], iconAnchor: [9, 9] }) })
+    : L.circleMarker([r.lat, r.lng], {
+        radius: 10, fillColor: colorFor(r), color: "#fff", weight: 2, fillOpacity: 0.95 });
+}
+
+/* Aggregate status / color across a bundle's members. */
+function aggStatus(members){
+  if (members.every(m => m.status === "Complete")) return "Complete";
+  if (members.some(m => m.status === "In Process")) return "In Process";
+  return "";   // open
+}
+function bundleColor(members){
+  if (members.some(m => m.urgent)) return "#E11900";
+  const s = aggStatus(members);
+  return s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
+}
+function bundlePrimary(members){
+  return members.slice().sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))[0];
+}
+function bundleIcon(members){
+  const cls = "bundle-pin" + (members.some(m => m.urgent) ? " pulse-red" : "");
+  return L.divIcon({ className: "bundle-marker", iconSize: [28, 28], iconAnchor: [14, 14],
+    html: '<div class="' + cls + '" style="background:' + bundleColor(members) + '">' + members.length + '</div>' });
+}
+
 function drawMarkers(fit){
   markersLayer.clearLayers();
   const pts = [];
-  allReports.filter(isVisible).forEach(r => {
-    const mk = r.urgent
-      ? L.marker([r.lat, r.lng], { icon: L.divIcon({
-          className: "urgent-marker",
-          html: '<div class="urgent-pin"></div>',
-          iconSize: [18, 18], iconAnchor: [9, 9]
-        }) })
-      : L.circleMarker([r.lat, r.lng], {
-          radius: 10, fillColor: colorFor(r), color: "#fff", weight: 2, fillOpacity: 0.95
-        });
-    mk.addTo(markersLayer);
-    mk.on("click", () => openDetail(r));
-    pts.push([r.lat, r.lng]);
+
+  // Group reports: real bundles (bundleId shared by 2+) vs. singletons.
+  const groups = {};
+  allReports.forEach(r => {
+    const k = r.bundleId ? ("b:" + r.bundleId) : ("s:" + r.id);
+    (groups[k] || (groups[k] = [])).push(r);
   });
+
+  Object.keys(groups).forEach(k => {
+    const members = groups[k];
+    const visible = members.filter(isVisible);
+    if (!visible.length) return;
+
+    if (k.charAt(0) === "b" && members.length > 1) {
+      const primary = bundlePrimary(members);
+      const mk = L.marker([primary.lat, primary.lng], { icon: bundleIcon(members) });
+      mk.addTo(markersLayer);
+      mk.on("click", () => openBundleDetail(members));
+      pts.push([primary.lat, primary.lng]);
+    } else {
+      // singleton (or a bundle reduced to one member after unbundling)
+      members.forEach(r => {
+        if (!isVisible(r)) return;
+        const mk = singleMarker(r);
+        mk.addTo(markersLayer);
+        mk.on("click", () => openDetail(r));
+        pts.push([r.lat, r.lng]);
+      });
+    }
+  });
+
   if (fit && pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
 }
 
@@ -302,7 +373,9 @@ async function loadReports(fromLogin, refit){
 
 /* ---------- Detail sheet ---------- */
 function openDetail(r){
-  current = r;
+  current = r; currentBundle = null;
+  $("d-single").style.display = "";
+  $("d-bundle").style.display = "none";
   $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "Open");
   $("d-status").style.background = colorFor(r);
   if (r.photo){
@@ -343,7 +416,7 @@ function mkBtn(label, cls, fn){
 function hideSheet(){
   $("scrim").classList.remove("show");
   $("sheet").classList.remove("show");
-  current = null;
+  current = null; currentBundle = null;
 }
 /* User-initiated close: pop our pushed history entry (which fires popstate ->
    hideSheet), so the back-stack stays in sync. */
@@ -371,6 +444,103 @@ async function update(newStatus){
   await loadReports(false, false);
   if (wasComplete) snack("Completed ✓", id);
   else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
+}
+
+/* ---------- Bundle detail ---------- */
+function escapeHtml(s){
+  return String(s == null ? "" : s).replace(/[&<>"]/g,
+    c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+}
+
+function openBundleDetail(members){
+  currentBundle = members; current = null;
+  $("d-single").style.display = "none";
+  const b = $("d-bundle");
+  b.style.display = "block";
+
+  const bundleId = (members.find(m => m.bundleId) || {}).bundleId || "";
+  const agg = aggStatus(members);
+  const urgent = members.some(m => m.urgent);
+
+  b.innerHTML =
+    '<span class="pill" style="background:' + bundleColor(members) + '">' +
+      (urgent ? "⚠ " : "") + members.length + " bundled reports" + (agg ? " · " + escapeHtml(agg) : " · Open") +
+    '</span>' +
+    '<p class="meta" style="margin-top:8px">Same issue, reported by several people. Uncheck one to split it out.</p>' +
+    '<div id="b-members"></div>' +
+    '<textarea id="b-note" placeholder="Resolution note (optional) — emailed to each reporter"></textarea>' +
+    '<div class="actions" id="b-actions"></div>';
+
+  const list = b.querySelector("#b-members");
+  members.forEach(m => {
+    const row = document.createElement("label");
+    row.className = "bmember";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = true;
+    cb.addEventListener("change", () => { if (!cb.checked) unbundle(m.id); });
+    row.appendChild(cb);
+    if (m.photo){
+      const img = document.createElement("img");
+      img.src = m.photo; img.className = "bthumb";
+      img.addEventListener("click", e => {
+        e.preventDefault();
+        if (m.photoFull) window.open(m.photoFull, "_blank", "noopener");
+      });
+      row.appendChild(img);
+    }
+    const txt = document.createElement("div");
+    txt.className = "btext";
+    txt.innerHTML =
+      '<div class="bdesc">' + escapeHtml(m.description || "(no description)") + '</div>' +
+      '<div class="bmeta">' + (m.area ? "📍 " + escapeHtml(m.area) + " · " : "") +
+        (m.timestamp ? new Date(m.timestamp).toLocaleDateString() : "") + '</div>';
+    row.appendChild(txt);
+    list.appendChild(row);
+  });
+
+  const actions = b.querySelector("#b-actions");
+  const allComplete = members.every(m => m.status === "Complete");
+  const allInProc   = members.every(m => m.status === "In Process");
+  if (!allComplete && !allInProc)
+    actions.appendChild(mkBtn("Mark all In Process", "btn-start", () => updateBundle(bundleId, "In Process")));
+  if (!allComplete)
+    actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
+  if (allComplete)
+    actions.appendChild(mkBtn("Reopen all", "btn-reopen", () => updateBundle(bundleId, "In Process")));
+  actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
+
+  $("scrim").classList.add("show");
+  $("sheet").classList.add("show");
+  if (!(history.state && history.state.detail)) history.pushState({ detail: true }, "");
+}
+
+async function updateBundle(bundleId, newStatus){
+  if (!bundleId) return;
+  const note = ($("b-note") && $("b-note").value.trim()) || "";
+  const wasComplete = newStatus === "Complete";
+  closeDetail();
+  let out;
+  try { out = await api({ action:"adminUpdate", password:getPw(), bundleId:bundleId, status:newStatus, note:note }); }
+  catch(e){ toast("Network error — not saved."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't save."); return;
+  }
+  await loadReports(false, false);
+  toast(wasComplete ? "Bundle completed ✓" : (newStatus === "In Process" ? "Bundle marked In Process." : "Updated."));
+}
+
+async function unbundle(id){
+  let out;
+  try { out = await api({ action:"adminUnbundle", password:getPw(), id:id }); }
+  catch(e){ toast("Network error."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't unbundle."); return;
+  }
+  closeDetail();
+  await loadReports(false, false);
+  toast("Removed from bundle.");
 }
 
 /* ---------- Snackbar / toast ---------- */
