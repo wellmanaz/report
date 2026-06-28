@@ -59,7 +59,10 @@
     border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;
     box-shadow:0 2px 8px rgba(0,0,0,.12);
   }
-  .legend .row{display:flex;align-items:center;gap:6px;margin:2px 0;}
+  .legend .row{display:flex;align-items:center;gap:6px;margin:3px 0;}
+  .legend label.row{cursor:pointer;}
+  .legend input{margin:0;width:15px;height:15px;}
+  .legend .always{color:var(--ink-soft);font-size:11px;}
   .dot{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15);}
   .dot.pulse{animation:upulse 1.2s ease-out infinite;}
 
@@ -137,15 +140,14 @@
       <div class="who" id="who"></div>
     </div>
     <div class="spacer"></div>
-    <label class="toggle"><input type="checkbox" id="show-completed"> Show completed</label>
     <button id="signout">Sign out</button>
   </div>
   <div id="map"></div>
   <div class="legend">
-    <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent</div>
-    <div class="row"><span class="dot" style="background:#C0653A"></span> New</div>
-    <div class="row"><span class="dot" style="background:#E6A700"></span> In Process</div>
-    <div class="row"><span class="dot" style="background:#4A7C59"></span> Complete</div>
+    <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
+    <label class="row"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
+    <label class="row"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
+    <label class="row"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Complete</label>
   </div>
 </div>
 
@@ -176,7 +178,7 @@ const PW_KEY = "hoa_admin_pw";
 /* ================================ */
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", lastReports = [], current = null, snackTimer = null, pwFails = 0;
+let map, markersLayer, vendorName = "", allReports = [], current = null, snackTimer = null, pwFails = 0;
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -238,11 +240,18 @@ function initMap(){
   }
 }
 
-function renderReports(reports){
-  lastReports = reports;
+/* Which reports to show, per the legend filter checkboxes. Urgent always shows. */
+function isVisible(r){
+  if (r.urgent) return true;
+  if (r.status === "Complete")   return $("f-complete").checked;
+  if (r.status === "In Process") return $("f-inproc").checked;
+  return $("f-open").checked;                       // blank status = Open
+}
+
+function drawMarkers(fit){
   markersLayer.clearLayers();
   const pts = [];
-  reports.forEach(r => {
+  allReports.filter(isVisible).forEach(r => {
     const mk = r.urgent
       ? L.marker([r.lat, r.lng], { icon: L.divIcon({
           className: "urgent-marker",
@@ -256,13 +265,16 @@ function renderReports(reports){
     mk.on("click", () => openDetail(r));
     pts.push([r.lat, r.lng]);
   });
-  if (pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
+  if (fit && pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
 }
 
+["f-open", "f-inproc", "f-complete"].forEach(id =>
+  $(id).addEventListener("change", () => drawMarkers(false)));
+
 /* ---------- Load ---------- */
-async function loadReports(fromLogin){
+async function loadReports(fromLogin, refit){
   let out;
-  try { out = await api({ action:"adminList", password:getPw(), includeCompleted: $("show-completed").checked }); }
+  try { out = await api({ action:"adminList", password:getPw(), includeCompleted: true }); }
   catch(e){ if (fromLogin) $("login-err").textContent = "Network error — try again."; else toast("Network error."); return; }
 
   if (!out.ok){
@@ -284,15 +296,14 @@ async function loadReports(fromLogin){
   vendorName = out.vendor || "";
   $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
   showApp();
-  renderReports(out.reports || []);
+  allReports = out.reports || [];
+  drawMarkers(refit !== false);
 }
-
-$("show-completed").addEventListener("change", () => loadReports(false));
 
 /* ---------- Detail sheet ---------- */
 function openDetail(r){
   current = r;
-  $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "New");
+  $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "Open");
   $("d-status").style.background = colorFor(r);
   if (r.photo){
     $("d-photo").src = r.photo;
@@ -357,7 +368,7 @@ async function update(newStatus){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
     toast(out.error || "Couldn't save."); return;
   }
-  await loadReports(false);
+  await loadReports(false, false);
   if (wasComplete) snack("Completed ✓", id);
   else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
 }
@@ -372,7 +383,7 @@ function snack(msg, undoId){
   $("snack-undo").onclick = async () => {
     $("snack").classList.remove("show");
     try { await api({ action:"adminUpdate", password:getPw(), id:undoId, status:"In Process", note:"" }); } catch(e){}
-    loadReports(false);
+    loadReports(false, false);
   };
 }
 function toast(msg){ snack(msg, null); }
