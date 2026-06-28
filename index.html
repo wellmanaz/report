@@ -521,6 +521,22 @@ $("submit-btn").addEventListener("click", async () => {
     btn.textContent = "Send report";
   }
 });
+
+/* ---------- Hidden admin entrance: 5 taps on "dead" space ---------- */
+(function(){
+  const ADMIN_URL = "admin.html";   // crew/admin page (password-gated)
+  let taps = 0, timer = null;
+  document.addEventListener("click", e => {
+    // Ignore taps on anything interactive so normal use never triggers it.
+    if (e.target.closest("button, input, textarea, a, label, #map, .leaflet-container")) {
+      taps = 0; clearTimeout(timer); return;
+    }
+    taps++;
+    clearTimeout(timer);
+    timer = setTimeout(() => { taps = 0; }, 2000);
+    if (taps >= 5) { taps = 0; clearTimeout(timer); window.location.href = ADMIN_URL; }
+  });
+})();
 </script>
 </body>
 </html>
