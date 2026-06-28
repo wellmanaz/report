@@ -350,19 +350,20 @@ function drawMarkers(fit){
 
   Object.keys(groups).forEach(k => {
     const members = groups[k];
-    const visible = members.filter(isVisible);
+    const visible = members.filter(isVisible);   // respect the Open/In Process/Complete filters
     if (!visible.length) return;
 
-    if (k.charAt(0) === "b" && members.length > 1) {
-      const primary = bundlePrimary(members);
-      const mk = L.marker([primary.lat, primary.lng], { icon: bundleIcon(members) });
+    // A bundle flag (with count) only when 2+ members are currently shown; the
+    // badge counts the visible members, so on the default view it's open-only.
+    if (k.charAt(0) === "b" && visible.length > 1) {
+      const primary = bundlePrimary(visible);
+      const mk = L.marker([primary.lat, primary.lng], { icon: bundleIcon(visible) });
       mk.addTo(markersLayer);
-      mk.on("click", () => openBundleDetail(members));
+      mk.on("click", () => openBundleDetail(visible));
       pts.push([primary.lat, primary.lng]);
     } else {
-      // singleton (or a bundle reduced to one member after unbundling)
-      members.forEach(r => {
-        if (!isVisible(r)) return;
+      // singleton, or a bundle with only one member currently shown
+      visible.forEach(r => {
         const mk = singleMarker(r);
         mk.addTo(markersLayer);
         mk.on("click", () => openDetail(r));
