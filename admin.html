@@ -61,6 +61,22 @@
   }
   .legend .row{display:flex;align-items:center;gap:6px;margin:2px 0;}
   .dot{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15);}
+  .dot.pulse{animation:upulse 1.2s ease-out infinite;}
+
+  /* Pulsing urgent map marker (divIcon) */
+  .urgent-marker{background:transparent!important;border:0!important;}
+  .urgent-pin{
+    width:18px;height:18px;border-radius:50%;
+    background:#E11900;border:2px solid #fff;
+    box-shadow:0 0 0 0 rgba(225,25,0,.65);
+    animation:upulse 1.2s ease-out infinite;
+  }
+  @keyframes upulse{
+    0%{box-shadow:0 0 0 0 rgba(225,25,0,.65);}
+    70%{box-shadow:0 0 0 16px rgba(225,25,0,0);}
+    100%{box-shadow:0 0 0 0 rgba(225,25,0,0);}
+  }
+  @media (prefers-reduced-motion: reduce){ .urgent-pin,.dot.pulse{animation:none;} }
 
   /* ---- Detail sheet ---- */
   #scrim{display:none;position:fixed;inset:0;z-index:600;background:rgba(38,33,26,.45);}
@@ -126,7 +142,7 @@
   </div>
   <div id="map"></div>
   <div class="legend">
-    <div class="row"><span class="dot" style="background:#E11900"></span> Urgent</div>
+    <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent</div>
     <div class="row"><span class="dot" style="background:#C0653A"></span> New</div>
     <div class="row"><span class="dot" style="background:#E6A700"></span> In Process</div>
     <div class="row"><span class="dot" style="background:#4A7C59"></span> Complete</div>
@@ -227,9 +243,16 @@ function renderReports(reports){
   markersLayer.clearLayers();
   const pts = [];
   reports.forEach(r => {
-    const mk = L.circleMarker([r.lat, r.lng], {
-      radius: r.urgent ? 12 : 10, fillColor: colorFor(r), color:"#fff", weight:2, fillOpacity:0.95
-    }).addTo(markersLayer);
+    const mk = r.urgent
+      ? L.marker([r.lat, r.lng], { icon: L.divIcon({
+          className: "urgent-marker",
+          html: '<div class="urgent-pin"></div>',
+          iconSize: [18, 18], iconAnchor: [9, 9]
+        }) })
+      : L.circleMarker([r.lat, r.lng], {
+          radius: 10, fillColor: colorFor(r), color: "#fff", weight: 2, fillOpacity: 0.95
+        });
+    mk.addTo(markersLayer);
     mk.on("click", () => openDetail(r));
     pts.push([r.lat, r.lng]);
   });
