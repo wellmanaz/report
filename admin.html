@@ -316,7 +316,7 @@ async function tryLogin(){
   await loadReports(true);
 }
 
-$("signout").addEventListener("click", () => { clearPw(); showLogin(""); });
+$("signout").addEventListener("click", () => { clearPw(); location.href = HOME_URL; });
 
 /* ---------- Map ---------- */
 function initMap(){
