@@ -411,9 +411,29 @@ if (REPORTS_VIEW_URL){
   $("view-all").style.display = "block";
 }
 
-/* After a report is sent, reload to return to the intro screen with a clean
-   slate (fresh GPS next time, no leftover photo/text). */
-$("another-btn").addEventListener("click", () => location.reload());
+/* After a report is sent, "Report another issue" clears everything and drops
+   the user straight back into a fresh report (one tap, fresh GPS) — no detour
+   through the intro screen. The QR location (state.locId) is intentionally kept. */
+$("another-btn").addEventListener("click", () => {
+  $("description").value = "";
+  $("email").value = "";
+  state.photoBase64 = null;
+  $("photo-camera").value = "";
+  $("photo-library").value = "";
+  $("photo-preview-wrap").style.display = "none";
+  document.querySelector(".photo-row").style.display = "flex";
+  state.lat = null; state.lng = null; state.locSource = null;
+  if (state.marker){ state.map.removeLayer(state.marker); state.marker = null; }
+  $("map").classList.remove("show");
+  $("map-hint").classList.remove("show");
+  $("adjust-btn").style.display = "none";
+  setLocStatus("", "");
+  const btn = $("submit-btn");
+  btn.disabled = true;
+  btn.textContent = "Send report";
+  $("success").style.display = "none";
+  beginReport();                       // shows the form + requests fresh GPS now
+});
 
 /* ---------- Photo (client-side compression) ---------- */
 $("camera-btn").addEventListener("click", () => $("photo-camera").click());
