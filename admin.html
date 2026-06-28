@@ -92,10 +92,12 @@
   #snack{
     position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120%);
     z-index:700;background:#26211A;color:#fff;border-radius:12px;padding:12px 16px;
-    display:flex;align-items:center;gap:16px;font-size:14px;transition:transform .2s ease;
+    display:flex;align-items:center;gap:16px;font-size:14px;
+    opacity:0;visibility:hidden;pointer-events:none;
+    transition:transform .2s ease, opacity .2s ease, visibility .2s;
     box-shadow:0 6px 20px rgba(0,0,0,.3);max-width:90vw;
   }
-  #snack.show{transform:translateX(-50%) translateY(0);}
+  #snack.show{transform:translateX(-50%) translateY(0);opacity:1;visibility:visible;pointer-events:auto;}
   #snack button{background:none;border:none;color:#FFD27A;font-weight:700;font-size:14px;}
 </style>
 </head>
