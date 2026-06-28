@@ -159,7 +159,7 @@ const PW_KEY = "hoa_admin_pw";
 /* ================================ */
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", lastReports = [], current = null, snackTimer = null;
+let map, markersLayer, vendorName = "", lastReports = [], current = null, snackTimer = null, pwFails = 0;
 
 const colorFor = s => s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
 const getPw = () => sessionStorage.getItem(PW_KEY) || "";
@@ -240,10 +240,21 @@ async function loadReports(fromLogin){
   catch(e){ if (fromLogin) $("login-err").textContent = "Network error — try again."; else toast("Network error."); return; }
 
   if (!out.ok){
-    if (out.auth === false){ clearPw(); showLogin("Incorrect password."); return; }
+    if (out.auth === false){
+      clearPw();
+      if (fromLogin){
+        pwFails++;
+        if (pwFails >= 3){ window.location.href = HOME_URL; return; }   // 3 strikes -> main screen
+        showLogin("Incorrect password. " + (3 - pwFails) + (pwFails === 2 ? " try left." : " tries left."));
+      } else {
+        showLogin("");
+      }
+      return;
+    }
     if (fromLogin) $("login-err").textContent = out.error || "Error."; else toast(out.error || "Error.");
     return;
   }
+  pwFails = 0;
   vendorName = out.vendor || "";
   $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
   showApp();
@@ -329,6 +340,18 @@ function snack(msg, undoId){
   };
 }
 function toast(msg){ snack(msg, null); }
+
+/* ---------- 5 taps on the login screen (dead space) -> back to main ---------- */
+(function(){
+  let taps = 0, timer = null;
+  $("login").addEventListener("click", e => {
+    if (e.target.closest("input, button")) { taps = 0; clearTimeout(timer); return; }
+    taps++;
+    clearTimeout(timer);
+    timer = setTimeout(() => { taps = 0; }, 2000);
+    if (taps >= 5) { taps = 0; clearTimeout(timer); window.location.href = HOME_URL; }
+  });
+})();
 
 /* ---------- Boot: resume session if a password is already stored ---------- */
 if (getPw()) loadReports(false); else showLogin("");
