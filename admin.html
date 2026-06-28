@@ -86,7 +86,7 @@
   .btn-start{background:var(--inproc);}
   .btn-done{background:var(--accent);}
   .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink);}
-  .btn-cancel{background:none;border:1px solid var(--line)!important;color:var(--ink-soft);}
+  .btn-cancel{background:#E5DDD0;color:var(--ink);}
 
   /* ---- Snackbar ---- */
   #snack{
@@ -126,6 +126,7 @@
   </div>
   <div id="map"></div>
   <div class="legend">
+    <div class="row"><span class="dot" style="background:#E11900"></span> Urgent</div>
     <div class="row"><span class="dot" style="background:#C0653A"></span> New</div>
     <div class="row"><span class="dot" style="background:#E6A700"></span> In Process</div>
     <div class="row"><span class="dot" style="background:#4A7C59"></span> Complete</div>
@@ -161,7 +162,9 @@ const PW_KEY = "hoa_admin_pw";
 const $ = id => document.getElementById(id);
 let map, markersLayer, vendorName = "", lastReports = [], current = null, snackTimer = null, pwFails = 0;
 
-const colorFor = s => s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
+const colorFor = r => r.urgent ? "#E11900"
+  : r.status === "Complete" ? "#4A7C59"
+  : r.status === "In Process" ? "#E6A700" : "#C0653A";
 const getPw = () => sessionStorage.getItem(PW_KEY) || "";
 const setPw = v => sessionStorage.setItem(PW_KEY, v);
 const clearPw = () => sessionStorage.removeItem(PW_KEY);
@@ -225,7 +228,7 @@ function renderReports(reports){
   const pts = [];
   reports.forEach(r => {
     const mk = L.circleMarker([r.lat, r.lng], {
-      radius: 10, fillColor: colorFor(r.status), color:"#fff", weight:2, fillOpacity:0.95
+      radius: r.urgent ? 12 : 10, fillColor: colorFor(r), color:"#fff", weight:2, fillOpacity:0.95
     }).addTo(markersLayer);
     mk.on("click", () => openDetail(r));
     pts.push([r.lat, r.lng]);
@@ -266,8 +269,8 @@ $("show-completed").addEventListener("change", () => loadReports(false));
 /* ---------- Detail sheet ---------- */
 function openDetail(r){
   current = r;
-  $("d-status").textContent = r.status || "New";
-  $("d-status").style.background = colorFor(r.status);
+  $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "New");
+  $("d-status").style.background = colorFor(r);
   if (r.photo){
     $("d-photo").src = r.photo;
     $("d-photo").style.display = "block";
@@ -291,22 +294,32 @@ function openDetail(r){
     actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
   if (r.status === "Complete")
     actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
-  actions.appendChild(mkBtn("Cancel", "btn-cancel", closeDetail));
+  actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
+  // Push a history entry so the device Back button closes the panel (not the page).
+  if (!(history.state && history.state.detail)) history.pushState({ detail: true }, "");
 }
 function mkBtn(label, cls, fn){
   const b = document.createElement("button");
   b.textContent = label; b.className = cls; b.addEventListener("click", fn);
   return b;
 }
-function closeDetail(){
+function hideSheet(){
   $("scrim").classList.remove("show");
   $("sheet").classList.remove("show");
   current = null;
 }
+/* User-initiated close: pop our pushed history entry (which fires popstate ->
+   hideSheet), so the back-stack stays in sync. */
+function closeDetail(){
+  if (history.state && history.state.detail) history.back();
+  else hideSheet();
+}
 $("scrim").addEventListener("click", closeDetail);
+/* Device / browser Back while the panel is open just closes the panel. */
+window.addEventListener("popstate", () => { if ($("sheet").classList.contains("show")) hideSheet(); });
 
 /* ---------- Update ---------- */
 async function update(newStatus){
