@@ -122,6 +122,11 @@
   .loc-link{color:var(--accent-deep);text-decoration:underline;cursor:pointer;}
 
   /* Full-screen map view */
+  /* While a report panel is open, hide the main map's zoom buttons so they don't
+     sit on top of / poke through the detail sheet. (The full-screen map view keeps
+     its own zoom controls.) */
+  body.sheet-open #map .leaflet-control-zoom{display:none;}
+
   #mapview{display:none;position:fixed;inset:0;z-index:800;background:var(--bg);}
   #mapview.show{display:block;}
   #mapview-map{position:absolute;inset:0;}
@@ -525,6 +530,7 @@ function openDetail(r){
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
+  document.body.classList.add("sheet-open");   // hide the map zoom buttons behind the panel
   // Push a history entry so the device Back button closes the panel (not the page).
   if (!(history.state && history.state.detail)) history.pushState({ detail: true }, "");
 }
@@ -536,6 +542,7 @@ function mkBtn(label, cls, fn){
 function hideSheet(){
   $("scrim").classList.remove("show");
   $("sheet").classList.remove("show");
+  document.body.classList.remove("sheet-open");   // restore the map zoom buttons
   current = null; currentBundle = null;
 }
 /* User-initiated close: pop our pushed history entry (which fires popstate ->
@@ -726,6 +733,7 @@ function openBundleDetail(members){
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
+  document.body.classList.add("sheet-open");   // hide the map zoom buttons behind the panel
   if (!(history.state && history.state.detail)) history.pushState({ detail: true }, "");
 }
 
