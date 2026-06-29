@@ -106,11 +106,14 @@
   }
 
   /* Text fields */
-  textarea,input[type=email]{
+  textarea,input[type=email],select{
     width:100%;border:1px solid var(--line);border-radius:10px;
     padding:12px;font-size:16px;font-family:inherit;color:var(--ink);
     background:#FDFCFA;
   }
+  select{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%236E6357' d='M1 1l5 5 5-5'/></svg>");
+    background-repeat:no-repeat;background-position:right 14px center;padding-right:34px;}
   textarea{min-height:96px;resize:vertical;}
   textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;}
   .field-note{font-size:12.5px;color:var(--ink-soft);margin-top:7px;}
@@ -268,20 +271,35 @@
     </div>
   </section>
 
-  <!-- STEP 3: DETAILS -->
+  <!-- STEP 3: TYPE -->
   <section class="step">
     <div class="step-head">
       <div class="step-num">3</div>
+      <h2>Type of issue</h2>
+    </div>
+    <select id="issue-type">
+      <option value="" selected>Select a category…</option>
+      <option value="Landscaping">Landscaping</option>
+      <option value="Lake">Lake</option>
+      <option value="General Maintenance">General Maintenance</option>
+      <option value="Other">Other</option>
+    </select>
+  </section>
+
+  <!-- STEP 4: DETAILS -->
+  <section class="step">
+    <div class="step-head">
+      <div class="step-num">4</div>
       <h2>What's going on?</h2>
       <span class="optional">optional</span>
     </div>
     <textarea id="description" placeholder="Example: Sprinkler head broken, water pooling on the sidewalk." maxlength="2000"></textarea>
   </section>
 
-  <!-- STEP 4: EMAIL -->
+  <!-- STEP 5: EMAIL -->
   <section class="step">
     <div class="step-head">
-      <div class="step-num">4</div>
+      <div class="step-num">5</div>
       <h2>Your email</h2>
       <span class="optional">optional</span>
     </div>
@@ -353,7 +371,7 @@ function setLocStatus(html, cls){ const el=$("loc-status"); el.innerHTML=html; e
 
 function locationLocked(lat, lng, source){
   state.lat = lat; state.lng = lng; state.locSource = source;
-  const label = source === "gps" ? "Location captured from your phone"
+  const label = source === "gps" ? "Location captured — drag the pin if it's off"
               : "Pin placed on map";
   setLocStatus("📍 " + label, "ok");
   $("adjust-btn").style.display = "inline-block";
@@ -363,6 +381,7 @@ function locationLocked(lat, lng, source){
 function showMap(center){
   $("map").classList.add("show");
   $("map-hint").classList.add("show");
+  $("adjust-btn").style.display = "none";   // map's already open — button would be redundant
   if (!state.map){
     state.map = L.map("map").setView(center, NEIGHBORHOOD_ZOOM);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -394,6 +413,8 @@ function startGeolocation(){
   navigator.geolocation.getCurrentPosition(
     pos => {
       locationLocked(pos.coords.latitude, pos.coords.longitude, "gps");
+      // Pop the map open on the captured spot so the user can fine-tune the pin.
+      showMap([pos.coords.latitude, pos.coords.longitude]);
     },
     err => {
       fallbackToMap(err.code === 1
@@ -447,6 +468,7 @@ if (REPORTS_VIEW_URL){
 $("another-btn").addEventListener("click", () => {
   $("description").value = "";
   $("email").value = "";
+  $("issue-type").value = "";
   $("urgent").checked = false;
   $("urgent-box").classList.remove("on");
   state.photoBase64 = null;
@@ -546,6 +568,7 @@ $("submit-btn").addEventListener("click", async () => {
     locSource: state.locSource,
     lat: state.lat,
     lng: state.lng,
+    issueType: $("issue-type").value,    // Landscaping | Lake | General Maintenance | Other | ""
     description: $("description").value.trim().slice(0,2000),
     email: $("email").value.trim().slice(0,200),
     photo: state.photoBase64,            // data URL or null
