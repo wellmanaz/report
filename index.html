@@ -115,6 +115,22 @@
   textarea:focus,input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;}
   .field-note{font-size:12.5px;color:var(--ink-soft);margin-top:7px;}
 
+  /* Urgent */
+  .urgent-box{
+    display:flex;align-items:flex-start;gap:11px;
+    border:1px solid var(--line);border-radius:10px;
+    padding:13px 14px;cursor:pointer;background:#FDFCFA;
+    transition:border-color .12s,background .12s;
+  }
+  .urgent-box.on{border-color:#C0392B;background:#FBEEEB;}
+  .urgent-box input{
+    width:20px;height:20px;margin:1px 0 0;flex:none;
+    accent-color:#C0392B;cursor:pointer;
+  }
+  .urgent-box .urgent-label{font-size:15px;font-weight:600;color:var(--ink);}
+  .urgent-box.on .urgent-label{color:#C0392B;}
+  .urgent-box .field-note{margin-top:3px;}
+
   /* Honeypot */
   .hp{position:absolute;left:-9999px;opacity:0;height:0;overflow:hidden;}
 
@@ -273,6 +289,15 @@
     <div class="field-note">Used only if we need to follow up on this report. Never shared.</div>
   </section>
 
+  <!-- URGENT -->
+  <label class="urgent-box" id="urgent-box">
+    <input type="checkbox" id="urgent">
+    <span>
+      <span class="urgent-label">🚩 Urgent — Needs Immediate Attention</span>
+      <span class="field-note">Check this only for safety hazards or issues that can't wait. The community manager is emailed right away.</span>
+    </span>
+  </label>
+
   <!-- Honeypot — bots fill this, humans never see it -->
   <div class="hp" aria-hidden="true">
     <label>Leave this field empty<input type="text" id="website" tabindex="-1" autocomplete="off"></label>
@@ -405,6 +430,11 @@ function beginReport(){
 }
 $("start-btn").addEventListener("click", beginReport);
 
+/* Urgent checkbox — highlight the box while it's checked */
+$("urgent").addEventListener("change", () => {
+  $("urgent-box").classList.toggle("on", $("urgent").checked);
+});
+
 /* Optional "see all reported issues" link — only shown if a URL is set */
 if (REPORTS_VIEW_URL){
   $("view-all").href = REPORTS_VIEW_URL;
@@ -417,6 +447,8 @@ if (REPORTS_VIEW_URL){
 $("another-btn").addEventListener("click", () => {
   $("description").value = "";
   $("email").value = "";
+  $("urgent").checked = false;
+  $("urgent-box").classList.remove("on");
   state.photoBase64 = null;
   $("photo-camera").value = "";
   $("photo-library").value = "";
@@ -517,6 +549,7 @@ $("submit-btn").addEventListener("click", async () => {
     description: $("description").value.trim().slice(0,2000),
     email: $("email").value.trim().slice(0,200),
     photo: state.photoBase64,            // data URL or null
+    urgent: $("urgent").checked,         // resident-flagged urgent -> red flag + priority email
     userAgent: navigator.userAgent.slice(0,300),
     website: $("website").value          // honeypot — must be empty; server drops if filled
   };
