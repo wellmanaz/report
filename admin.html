@@ -131,6 +131,21 @@
     padding:10px 14px;font-size:15px;font-weight:650;font-family:inherit;color:var(--ink);
     box-shadow:0 2px 10px rgba(0,0,0,.28);cursor:pointer;
   }
+  #mapview-edithint{
+    display:none;position:absolute;top:12px;left:12px;right:120px;z-index:801;
+    background:var(--accent-deep);color:#fff;border-radius:10px;
+    padding:10px 14px;font-size:13px;font-weight:600;
+    box-shadow:0 2px 10px rgba(0,0,0,.28);
+  }
+  #mapview.editing #mapview-edithint{display:block;}
+  #mapview-save{
+    display:none;position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:801;
+    background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:14px 28px;font-size:16px;font-weight:700;font-family:inherit;
+    box-shadow:0 3px 14px rgba(0,0,0,.34);cursor:pointer;
+  }
+  #mapview-save:disabled{opacity:.6;cursor:default;}
+  #mapview.editing #mapview-save{display:block;}
 
   /* Merge mode banner */
   #mergebar{
@@ -224,6 +239,7 @@
     <img id="d-photo" alt="Reported issue photo" style="display:none">
     <div id="d-noimg" class="noimg" style="display:none"></div>
     <p class="desc" id="d-desc"></p>
+    <p class="meta" id="d-type"></p>
     <p class="meta" id="d-area"></p>
     <p class="meta" id="d-date"></p>
     <textarea id="d-note" placeholder="Resolution note (optional) — emailed to the reporter if entered"></textarea>
@@ -237,6 +253,8 @@
 <div id="mapview">
   <div id="mapview-map"></div>
   <button id="mapview-close" type="button">✕ Close map</button>
+  <div id="mapview-edithint">Drag the pin to the correct spot, then Save.</div>
+  <button id="mapview-save" type="button">Save location</button>
 </div>
 
 <div id="mergebar">
@@ -272,7 +290,7 @@ function drawNeighborhood(targetMap){
 }
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null;
+let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null, pinEdit = null;
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -465,6 +483,7 @@ function openDetail(r){
     $("d-noimg").onclick = () => openMapView(r.lat, r.lng, r.area || "Reported location");
   }
   $("d-desc").textContent = r.description || "(no description)";
+  $("d-type").textContent = r.issueType ? ("🏷️ " + r.issueType) : "";
   if (r.area || (isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng)))) {
     $("d-area").innerHTML = '📍 <span class="loc-link">' + escapeHtml(r.area || "View on map") + '</span>';
     $("d-area").onclick = () => openMapView(r.lat, r.lng, r.area || "Reported location");
@@ -482,6 +501,8 @@ function openDetail(r){
     actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
   if (r.status === "Complete")
     actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
+  if (isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng)))
+    actions.appendChild(mkBtn("Adjust pin location", "btn-merge", () => openPinEditor(r)));
   actions.appendChild(mkBtn("Merge with another report", "btn-merge", () => enterMergeMode(r)));
   actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
 
@@ -508,10 +529,15 @@ function closeDetail(){
 }
 $("scrim").addEventListener("click", closeDetail);
 
-/* Full-screen map view (opened from a location line or a No-Image placeholder). */
-function openMapView(lat, lng, title){
+/* Full-screen map view (opened from a location line or a No-Image placeholder).
+   When editId is supplied, the pin is draggable and a Save button appears so the
+   manager can correct a report's location. */
+function openMapView(lat, lng, title, editId){
   lat = parseFloat(lat); lng = parseFloat(lng);
   if (!isFinite(lat) || !isFinite(lng)) return;
+  const editing = !!editId;
+  pinEdit = editing ? { id: editId, lat: lat, lng: lng } : null;
+  $("mapview").classList.toggle("editing", editing);
   $("mapview").classList.add("show");
   if (!mapView){
     mapView = L.map("mapview-map").setView([lat, lng], 18);
@@ -521,12 +547,49 @@ function openMapView(lat, lng, title){
     mapView.setView([lat, lng], 18);
   }
   if (mapViewMarker) mapView.removeLayer(mapViewMarker);
-  mapViewMarker = L.marker([lat, lng]).addTo(mapView);
-  if (title) mapViewMarker.bindPopup(title).openPopup();
+  mapViewMarker = L.marker([lat, lng], { draggable: editing }).addTo(mapView);
+  if (editing){
+    $("mapview-save").disabled = false;
+    mapViewMarker.on("dragend", () => {
+      const p = mapViewMarker.getLatLng();
+      pinEdit.lat = p.lat; pinEdit.lng = p.lng;
+    });
+  } else if (title){
+    mapViewMarker.bindPopup(title).openPopup();
+  }
   setTimeout(() => mapView.invalidateSize(), 80);
   history.pushState({ mapview: true }, "");
 }
-function hideMapView(){ $("mapview").classList.remove("show"); }
+
+/* Open the map in pin-edit mode for the currently-open single report. */
+function openPinEditor(r){
+  openMapView(r.lat, r.lng, null, r.id);
+}
+
+/* Persist the dragged pin to the sheet, then refresh the local copy + markers. */
+async function savePinLocation(){
+  if (!pinEdit) return;
+  const target = pinEdit;
+  $("mapview-save").disabled = true;
+  let out;
+  try { out = await api({ action:"adminMove", password:getPw(), id:target.id, lat:target.lat, lng:target.lng }); }
+  catch (e) { out = { ok:false, error:"Network error." }; }
+  if (!out || !out.ok){
+    $("mapview-save").disabled = false;
+    snack((out && out.error) || "Couldn't move the pin.");
+    return;
+  }
+  // Update the in-memory report so the map + detail reflect the move without a full reload.
+  const rep = allReports.find(x => x.id === target.id);
+  if (rep){ rep.lat = target.lat; rep.lng = target.lng; if (typeof out.area === "string") rep.area = out.area; }
+  if (current && current.id === target.id){ current.lat = target.lat; current.lng = target.lng; if (rep) current.area = rep.area; }
+  drawMarkers(false);
+  closeMapView();
+  snack("Pin location updated.");
+}
+$("mapview-save").addEventListener("click", savePinLocation);
+
+function hideMapView(){ $("mapview").classList.remove("show"); $("mapview").classList.remove("editing"); pinEdit = null; }
 function closeMapView(){ if (history.state && history.state.mapview) history.back(); else hideMapView(); }
 $("mapview-close").addEventListener("click", closeMapView);
 
