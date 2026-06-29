@@ -289,6 +289,19 @@ function drawNeighborhood(targetMap){
     fill:true, fillColor:"#2563EB", fillOpacity:0.04, interactive:false }).addTo(targetMap);
 }
 
+/* Ray-cast point-in-polygon test against the community BOUNDARY (lat/lng ring).
+   Used to decide whether the admin map should follow the user's GPS. */
+function insideBoundary(lat, lng){
+  let inside = false;
+  for (let i = 0, j = BOUNDARY.length - 1; i < BOUNDARY.length; j = i++){
+    const yi = BOUNDARY[i][0], xi = BOUNDARY[i][1];
+    const yj = BOUNDARY[j][0], xj = BOUNDARY[j][1];
+    if (((yi > lat) !== (yj > lat)) &&
+        (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
 const $ = id => document.getElementById(id);
 let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null, pinEdit = null;
 
@@ -344,10 +357,14 @@ function initMap(){
   }).addTo(map);
   drawNeighborhood(map);                 // faint boundary overlay (verify coverage)
   markersLayer = L.layerGroup().addTo(map);
-  // Center on the crew's position if allowed (doesn't block rendering).
+  // Center on the crew's position only if they're inside Andersen Springs;
+  // otherwise stay on the neighborhood center (doesn't block rendering).
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
-      p => map.setView([p.coords.latitude, p.coords.longitude], 16),
+      p => {
+        if (insideBoundary(p.coords.latitude, p.coords.longitude))
+          map.setView([p.coords.latitude, p.coords.longitude], 16);
+      },
       () => {}, { enableHighAccuracy:true, timeout:8000 }
     );
   }
