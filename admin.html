@@ -120,6 +120,7 @@
   .noimg .ni-text{font-weight:700;font-size:15px;color:var(--ink);}
   .noimg .ni-sub{font-size:13px;}
   .loc-link{color:var(--accent-deep);text-decoration:underline;cursor:pointer;}
+  .loc-edit{font-size:12px;color:var(--accent);font-weight:600;}
 
   /* Full-screen map view */
   /* While a report panel is open, hide the main map's zoom buttons so they don't
@@ -188,8 +189,7 @@
   .actions button{border:none;border-radius:12px;padding:14px;font-size:16px;font-weight:650;color:#fff;}
   .btn-start{background:var(--inproc);}
   .btn-done{background:var(--accent);}
-  .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink);}
-  .btn-cancel{background:#E5DDD0;color:var(--ink);}
+  .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink)!important;}
 
   /* ---- Snackbar ---- */
   #snack{
@@ -485,6 +485,7 @@ async function loadReports(fromLogin, refit){
 /* ---------- Detail sheet ---------- */
 function openDetail(r){
   current = r; currentBundle = null;
+  const hasCoords = isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng));
   $("d-single").style.display = "";
   $("d-bundle").style.display = "none";
   $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "Open");
@@ -501,14 +502,15 @@ function openDetail(r){
     $("d-photo").onclick = null;
     $("d-noimg").style.display = "flex";
     $("d-noimg").innerHTML = '<div class="ni-pin">📍</div><div class="ni-text">No Image</div>' +
-      '<div class="ni-sub">' + (r.area ? escapeHtml(r.area) + " · " : "") + "tap to view on map</div>";
-    $("d-noimg").onclick = () => openMapView(r.lat, r.lng, r.area || "Reported location");
+      '<div class="ni-sub">' + (r.area ? escapeHtml(r.area) + " · " : "") + (hasCoords ? "tap to move pin" : "no location") + "</div>";
+    $("d-noimg").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", r.id) : null;
   }
   $("d-desc").textContent = r.description || "(no description)";
   $("d-type").textContent = r.issueType ? ("🏷️ " + r.issueType) : "";
-  if (r.area || (isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng)))) {
-    $("d-area").innerHTML = '📍 <span class="loc-link">' + escapeHtml(r.area || "View on map") + '</span>';
-    $("d-area").onclick = () => openMapView(r.lat, r.lng, r.area || "Reported location");
+  if (r.area || hasCoords) {
+    $("d-area").innerHTML = '📍 <span class="loc-link">' + escapeHtml(r.area || "View on map") +
+      (hasCoords ? '</span> <span class="loc-edit">tap to move pin</span>' : '</span>');
+    $("d-area").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", r.id) : null;
   } else {
     $("d-area").textContent = ""; $("d-area").onclick = null;
   }
@@ -523,10 +525,6 @@ function openDetail(r){
     actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
   if (r.status === "Complete")
     actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
-  if (isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng)))
-    actions.appendChild(mkBtn("Adjust pin location", "btn-merge", () => openPinEditor(r)));
-  actions.appendChild(mkBtn("Merge with another report", "btn-merge", () => enterMergeMode(r)));
-  actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
@@ -583,11 +581,6 @@ function openMapView(lat, lng, title, editId){
   }
   setTimeout(() => mapView.invalidateSize(), 80);
   history.pushState({ mapview: true }, "");
-}
-
-/* Open the map in pin-edit mode for the currently-open single report. */
-function openPinEditor(r){
-  openMapView(r.lat, r.lng, null, r.id);
 }
 
 /* Persist the dragged pin to the sheet, then refresh the local copy + markers. */
@@ -729,7 +722,6 @@ function openBundleDetail(members){
     actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
   if (allComplete)
     actions.appendChild(mkBtn("Reopen all", "btn-reopen", () => updateBundle(bundleId, "In Process")));
-  actions.appendChild(mkBtn("Close", "btn-cancel", closeDetail));
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
