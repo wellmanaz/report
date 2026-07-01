@@ -179,8 +179,24 @@
   #sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px;}
   #sheet .pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;color:#fff;}
   #sheet img{width:100%;border-radius:12px;margin:12px 0;display:block;}
-  #sheet .desc{font-size:16px;margin:6px 0;}
+  #sheet .desc{font-size:16px;margin:6px 0;flex:1;}
   #sheet .meta{font-size:13px;color:var(--ink-soft);margin:2px 0;}
+  .desc-row{display:flex;align-items:flex-start;gap:10px;}
+  .linkbtn{background:none;border:none;color:var(--accent-deep);font-family:inherit;
+    font-size:13px;font-weight:600;cursor:pointer;padding:4px 2px;flex:none;}
+  .editor-btns{display:flex;align-items:center;gap:12px;margin-top:8px;}
+  .btn-note{background:var(--accent);color:#fff;border:none;border-radius:10px;
+    padding:10px 16px;font-size:14px;font-weight:650;font-family:inherit;cursor:pointer;}
+  .btn-note:disabled{opacity:.55;cursor:default;}
+  /* Notes thread */
+  .notes-head{margin-top:16px;font-size:13px;font-weight:700;color:var(--ink);
+    text-transform:uppercase;letter-spacing:.04em;}
+  .notes-thread{margin:8px 0;display:flex;flex-direction:column;gap:8px;}
+  .note-item{background:#F6F2EA;border-radius:10px;padding:9px 11px;}
+  .note-item .note-meta{font-size:11.5px;color:var(--ink-soft);margin-bottom:3px;}
+  .note-item .note-body{font-size:14.5px;color:var(--ink);white-space:pre-wrap;}
+  .notes-empty{font-size:13px;color:var(--ink-soft);font-style:italic;margin:8px 0;}
+  #d-note-save{margin-top:8px;}
   #sheet textarea{
     width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
     font-size:15px;font-family:inherit;margin-top:12px;min-height:64px;resize:vertical;background:#FDFCFA;
@@ -243,11 +259,26 @@
     <span class="pill" id="d-status"></span>
     <img id="d-photo" alt="Reported issue photo" style="display:none">
     <div id="d-noimg" class="noimg" style="display:none"></div>
-    <p class="desc" id="d-desc"></p>
+    <div class="desc-row">
+      <p class="desc" id="d-desc"></p>
+      <button id="d-desc-edit" class="linkbtn" type="button">Edit</button>
+    </div>
+    <div id="d-desc-editor" style="display:none">
+      <textarea id="d-desc-input" placeholder="Report description" maxlength="2000"></textarea>
+      <div class="editor-btns">
+        <button id="d-desc-save" class="btn-note" type="button">Save text</button>
+        <button id="d-desc-cancel" class="linkbtn" type="button">Cancel</button>
+      </div>
+    </div>
     <p class="meta" id="d-type"></p>
     <p class="meta" id="d-area"></p>
     <p class="meta" id="d-date"></p>
-    <textarea id="d-note" placeholder="Resolution note (optional) — emailed to the reporter if entered"></textarea>
+
+    <div class="notes-head">Notes</div>
+    <div id="d-notes" class="notes-thread"></div>
+    <textarea id="d-note" placeholder="Add a note — post an update, ask a question, or leave feedback for the team"></textarea>
+    <button id="d-note-save" class="btn-note" type="button">Save note</button>
+
     <div class="actions" id="d-actions"></div>
   </div>
   <div id="d-bundle" style="display:none"></div>
@@ -516,6 +547,8 @@ function openDetail(r){
   }
   $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
   $("d-note").value = "";
+  cancelEditDesc();            // reset the description editor to read mode
+  renderNotes(r.notes);       // show the notes thread
 
   const actions = $("d-actions");
   actions.innerHTML = "";
@@ -633,6 +666,84 @@ async function update(newStatus){
   if (wasComplete) snack("Completed ✓", id);
   else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
 }
+
+/* ---------- Notes thread ---------- */
+/* The notes log is newest-first, entries separated by a blank line, each stored
+   as "[time · author] body". Render each as a card. */
+function renderNotes(raw){
+  const box = $("d-notes");
+  box.innerHTML = "";
+  const entries = String(raw || "").split("\n\n").map(s => s.trim()).filter(Boolean);
+  if (!entries.length){
+    box.innerHTML = '<div class="notes-empty">No notes yet — add the first update below.</div>';
+    return;
+  }
+  entries.forEach(e => {
+    const m = e.match(/^\[([^\]]*)\]\s?([\s\S]*)$/);
+    const div = document.createElement("div");
+    div.className = "note-item";
+    div.innerHTML = (m ? '<div class="note-meta">' + escapeHtml(m[1]) + '</div>' : '') +
+      '<div class="note-body">' + escapeHtml(m ? m[2] : e) + '</div>';
+    box.appendChild(div);
+  });
+}
+
+async function saveNote(){
+  if (!current) return;
+  const text = $("d-note").value.trim();
+  if (!text){ toast("Type a note first."); return; }
+  const btn = $("d-note-save"); btn.disabled = true;
+  let out;
+  try { out = await api({ action:"adminAddNote", password:getPw(), id:current.id, note:text }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  btn.disabled = false;
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save note."); return;
+  }
+  current.notes = out.notes || "";
+  const rep = allReports.find(x => x.id === current.id); if (rep) rep.notes = current.notes;
+  $("d-note").value = "";
+  renderNotes(current.notes);
+  toast("Note added.");
+}
+$("d-note-save").addEventListener("click", saveNote);
+
+/* ---------- Edit the resident's description ---------- */
+function startEditDesc(){
+  if (!current) return;
+  $("d-desc-input").value = current.description || "";
+  $("d-desc-editor").style.display = "block";
+  $("d-desc").style.display = "none";
+  $("d-desc-edit").style.display = "none";
+  $("d-desc-input").focus();
+}
+function cancelEditDesc(){
+  $("d-desc-editor").style.display = "none";
+  $("d-desc").style.display = "";
+  $("d-desc-edit").style.display = "";
+}
+async function saveDesc(){
+  if (!current) return;
+  const text = $("d-desc-input").value.trim();
+  const btn = $("d-desc-save"); btn.disabled = true;
+  let out;
+  try { out = await api({ action:"adminEditDesc", password:getPw(), id:current.id, description:text }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  btn.disabled = false;
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save."); return;
+  }
+  current.description = out.description || "";
+  const rep = allReports.find(x => x.id === current.id); if (rep) rep.description = current.description;
+  $("d-desc").textContent = current.description || "(no description)";
+  cancelEditDesc();
+  toast("Text updated.");
+}
+$("d-desc-edit").addEventListener("click", startEditDesc);
+$("d-desc-save").addEventListener("click", saveDesc);
+$("d-desc-cancel").addEventListener("click", cancelEditDesc);
 
 /* ---------- Bundle detail ---------- */
 function escapeHtml(s){
