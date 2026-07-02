@@ -178,7 +178,8 @@
   #sheet.show{transform:translateY(0);}
   #sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 14px;}
   #sheet .pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;color:#fff;}
-  #sheet img{width:100%;border-radius:12px;margin:12px 0;display:block;}
+  #sheet img{width:100%;max-width:420px;max-height:320px;object-fit:contain;
+    border-radius:12px;margin:12px auto;display:block;background:#F0ECE4;}
   #sheet .desc{font-size:16px;margin:6px 0;flex:1;}
   #sheet .meta{font-size:13px;color:var(--ink-soft);margin:2px 0;}
   .desc-row{display:flex;align-items:flex-start;gap:10px;}
@@ -192,11 +193,32 @@
   .notes-head{margin-top:16px;font-size:13px;font-weight:700;color:var(--ink);
     text-transform:uppercase;letter-spacing:.04em;}
   .notes-thread{margin:8px 0;display:flex;flex-direction:column;gap:8px;}
-  .note-item{background:#F6F2EA;border-radius:10px;padding:9px 11px;}
+  .note-item{background:#F6F2EA;border-radius:10px;padding:9px 34px 9px 11px;position:relative;}
   .note-item .note-meta{font-size:11.5px;color:var(--ink-soft);margin-bottom:3px;}
   .note-item .note-body{font-size:14.5px;color:var(--ink);white-space:pre-wrap;}
+  .note-edit-btn{position:absolute;top:6px;right:6px;background:none;border:none;
+    font-size:15px;line-height:1;color:var(--accent-deep);cursor:pointer;padding:4px;}
+  .note-edit{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;
+    font-size:14.5px;font-family:inherit;background:#fff;min-height:56px;resize:vertical;}
   .notes-empty{font-size:13px;color:var(--ink-soft);font-style:italic;margin:8px 0;}
   #d-note-save{margin-top:8px;}
+  /* Category line — click to change */
+  .type-line{cursor:pointer;color:var(--accent-deep);font-weight:600;display:inline-block;}
+  .type-select{font-size:15px;font-family:inherit;padding:8px 10px;border-radius:8px;
+    border:1px solid var(--line);background:#FDFCFA;color:var(--ink);margin:2px 0;}
+
+  /* Desktop: the detail panel becomes a centered card instead of a full-width
+     bottom sheet, and photos are held to a sensible size. */
+  @media (min-width:720px){
+    #sheet{
+      left:50%;right:auto;width:600px;max-width:92vw;bottom:24px;
+      border-radius:18px;max-height:88vh;
+      transform:translate(-50%,calc(100% + 48px));
+    }
+    #sheet.show{transform:translate(-50%,0);}
+    #sheet img{max-width:100%;max-height:360px;}
+    .noimg{max-width:420px;margin-left:auto;margin-right:auto;}
+  }
   #sheet textarea{
     width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
     font-size:15px;font-family:inherit;margin-top:12px;min-height:64px;resize:vertical;background:#FDFCFA;
@@ -270,7 +292,8 @@
         <button id="d-desc-cancel" class="linkbtn" type="button">Cancel</button>
       </div>
     </div>
-    <p class="meta" id="d-type"></p>
+    <p class="meta type-line" id="d-type"></p>
+    <select id="d-type-select" class="type-select" style="display:none"></select>
     <p class="meta" id="d-area"></p>
     <p class="meta" id="d-date"></p>
 
@@ -537,7 +560,7 @@ function openDetail(r){
     $("d-noimg").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", r.id) : null;
   }
   $("d-desc").textContent = r.description || "(no description)";
-  $("d-type").textContent = r.issueType ? ("🏷️ " + r.issueType) : "";
+  hideTypePicker(); setTypeText();
   if (r.area || hasCoords) {
     $("d-area").innerHTML = '📍 <span class="loc-link">' + escapeHtml(r.area || "View on map") +
       (hasCoords ? '</span> <span class="loc-edit">tap to move pin</span>' : '</span>');
@@ -548,6 +571,7 @@ function openDetail(r){
   $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
   $("d-note").value = "";
   cancelEditDesc();            // reset the description editor to read mode
+  notesEditIndex = -1;
   renderNotes(r.notes);       // show the notes thread
 
   const actions = $("d-actions");
@@ -669,23 +693,61 @@ async function update(newStatus){
 
 /* ---------- Notes thread ---------- */
 /* The notes log is newest-first, entries separated by a blank line, each stored
-   as "[time · author] body". Render each as a card. */
+   as "[time · author] body". Render each as a card with a pencil to edit it. */
+let notesEditIndex = -1;
 function renderNotes(raw){
   const box = $("d-notes");
   box.innerHTML = "";
   const entries = String(raw || "").split("\n\n").map(s => s.trim()).filter(Boolean);
   if (!entries.length){
     box.innerHTML = '<div class="notes-empty">No notes yet — add the first update below.</div>';
+    notesEditIndex = -1;
     return;
   }
-  entries.forEach(e => {
+  entries.forEach((e, i) => {
     const m = e.match(/^\[([^\]]*)\]\s?([\s\S]*)$/);
+    const meta = m ? m[1] : "";
+    const body = m ? m[2] : e;
     const div = document.createElement("div");
     div.className = "note-item";
-    div.innerHTML = (m ? '<div class="note-meta">' + escapeHtml(m[1]) + '</div>' : '') +
-      '<div class="note-body">' + escapeHtml(m ? m[2] : e) + '</div>';
+    if (meta) div.innerHTML = '<div class="note-meta">' + escapeHtml(meta) + '</div>';
+    if (i === notesEditIndex){
+      const ta = document.createElement("textarea");
+      ta.className = "note-edit"; ta.value = body; ta.maxLength = 2000;
+      const bar = document.createElement("div"); bar.className = "editor-btns";
+      const save = document.createElement("button"); save.className = "btn-note"; save.textContent = "Save";
+      save.addEventListener("click", () => saveNoteEdit(i, ta.value));
+      const cancel = document.createElement("button"); cancel.className = "linkbtn"; cancel.textContent = "Cancel";
+      cancel.addEventListener("click", () => { notesEditIndex = -1; renderNotes(current.notes); });
+      bar.appendChild(save); bar.appendChild(cancel);
+      div.appendChild(ta); div.appendChild(bar);
+    } else {
+      const bodyDiv = document.createElement("div");
+      bodyDiv.className = "note-body"; bodyDiv.textContent = body;
+      const pencil = document.createElement("button");
+      pencil.className = "note-edit-btn"; pencil.title = "Edit note"; pencil.textContent = "✎";
+      pencil.addEventListener("click", () => { notesEditIndex = i; renderNotes(current.notes); });
+      div.appendChild(bodyDiv); div.appendChild(pencil);
+    }
     box.appendChild(div);
   });
+}
+
+async function saveNoteEdit(index, text){
+  text = String(text || "").trim();
+  if (!text){ toast("Note can't be empty."); return; }
+  let out;
+  try { out = await api({ action:"adminEditNote", password:getPw(), id:current.id, index:index, note:text }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save."); return;
+  }
+  current.notes = out.notes || "";
+  const rep = allReports.find(x => x.id === current.id); if (rep) rep.notes = current.notes;
+  notesEditIndex = -1;
+  renderNotes(current.notes);
+  toast("Note updated.");
 }
 
 async function saveNote(){
@@ -744,6 +806,42 @@ async function saveDesc(){
 $("d-desc-edit").addEventListener("click", startEditDesc);
 $("d-desc-save").addEventListener("click", saveDesc);
 $("d-desc-cancel").addEventListener("click", cancelEditDesc);
+
+/* ---------- Change category ---------- */
+const ISSUE_TYPES = ["Landscaping", "Lake", "General Maintenance", "Other"];
+$("d-type-select").innerHTML = '<option value="">— none —</option>' +
+  ISSUE_TYPES.map(t => '<option value="' + t + '">' + t + '</option>').join("");
+
+function setTypeText(){
+  $("d-type").textContent = (current && current.issueType ? ("🏷️ " + current.issueType) : "🏷️ Set category") + "  ✎";
+}
+function hideTypePicker(){ $("d-type-select").style.display = "none"; $("d-type").style.display = ""; }
+function showTypePicker(){
+  if (!current) return;
+  $("d-type-select").value = current.issueType || "";
+  $("d-type").style.display = "none";
+  $("d-type-select").style.display = "";
+  $("d-type-select").focus();
+}
+async function saveType(){
+  if (!current) return;
+  const val = $("d-type-select").value;
+  if (val === (current.issueType || "")){ hideTypePicker(); return; }
+  let out;
+  try { out = await api({ action:"adminSetType", password:getPw(), id:current.id, issueType:val }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save."); hideTypePicker(); return;
+  }
+  current.issueType = out.issueType || "";
+  const rep = allReports.find(x => x.id === current.id); if (rep) rep.issueType = current.issueType;
+  setTypeText(); hideTypePicker();
+  toast("Category updated.");
+}
+$("d-type").addEventListener("click", showTypePicker);
+$("d-type-select").addEventListener("change", saveType);
+$("d-type-select").addEventListener("blur", hideTypePicker);
 
 /* ---------- Bundle detail ---------- */
 function escapeHtml(s){
