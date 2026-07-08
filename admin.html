@@ -207,6 +207,17 @@
   .type-select{font-size:15px;font-family:inherit;padding:8px 10px;border-radius:8px;
     border:1px solid var(--line);background:#FDFCFA;color:var(--ink);margin:2px 0;}
 
+  /* Small centered modal (e.g. "add a note" prompt) — no browser title/URL */
+  .modal{display:none;position:fixed;inset:0;z-index:900;background:rgba(38,33,26,.5);
+    align-items:center;justify-content:center;padding:20px;}
+  .modal.show{display:flex;}
+  .modal-card{background:var(--card);border-radius:16px;padding:20px;width:100%;max-width:400px;
+    box-shadow:0 12px 44px rgba(0,0,0,.32);}
+  .modal-card p{font-size:15.5px;font-weight:600;color:var(--ink);margin-bottom:12px;}
+  .modal-card textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;min-height:84px;resize:vertical;background:#FDFCFA;}
+  .modal-btns{display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:14px;}
+
   /* Desktop: the detail panel becomes a centered card instead of a full-width
      bottom sheet, and photos are held to a sensible size. */
   @media (min-width:720px){
@@ -319,6 +330,17 @@
 <div id="mergebar">
   <span>Merge mode — tap the report to combine with the one you chose.</span>
   <button id="mergebar-cancel" type="button">Cancel</button>
+</div>
+
+<div id="notemodal" class="modal">
+  <div class="modal-card">
+    <p id="notemodal-msg"></p>
+    <textarea id="notemodal-input" maxlength="2000" placeholder="Type a note…"></textarea>
+    <div class="modal-btns">
+      <button id="notemodal-cancel" class="linkbtn" type="button">Cancel</button>
+      <button id="notemodal-save" class="btn-note" type="button">Save</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
@@ -673,15 +695,43 @@ window.addEventListener("popstate", () => {
   if ($("sheet").classList.contains("show")) hideSheet();
 });
 
+/* Small in-app modal that asks for a note. Resolves to the text, or null if
+   cancelled. Used instead of window.prompt so there's no browser title/URL. */
+function askNote(message){
+  return new Promise(resolve => {
+    const modal = $("notemodal"), input = $("notemodal-input");
+    const saveBtn = $("notemodal-save"), cancelBtn = $("notemodal-cancel");
+    $("notemodal-msg").textContent = message;
+    input.value = "";
+    modal.classList.add("show");
+    setTimeout(() => input.focus(), 50);
+    function cleanup(){
+      modal.classList.remove("show");
+      saveBtn.removeEventListener("click", onSave);
+      cancelBtn.removeEventListener("click", onCancel);
+      modal.removeEventListener("click", onBackdrop);
+      document.removeEventListener("keydown", onKey);
+    }
+    function onSave(){ const v = input.value.trim(); cleanup(); resolve(v); }
+    function onCancel(){ cleanup(); resolve(null); }
+    function onBackdrop(e){ if (e.target === modal) onCancel(); }
+    function onKey(e){ if (e.key === "Escape") onCancel(); }
+    saveBtn.addEventListener("click", onSave);
+    cancelBtn.addEventListener("click", onCancel);
+    modal.addEventListener("click", onBackdrop);
+    document.addEventListener("keydown", onKey);
+  });
+}
+
 /* ---------- Update ---------- */
 async function update(newStatus){
   if (!current) return;
   let note = $("d-note").value.trim();
-  // Moving to In Process without a note: prompt for one so the team leaves an update.
+  // Moving to In Process without a note: ask for one so the team leaves an update.
   if (newStatus === "In Process" && !note){
-    const entered = prompt("Add a note for this update — what's being done, or an ETA:");
+    const entered = await askNote("Add a note for this update — what's being done, or an ETA:");
     if (entered === null) return;          // cancelled — leave the status unchanged
-    note = entered.trim();                 // OK with empty text proceeds without a note
+    note = entered;                        // saving with empty text proceeds without a note
   }
   const id = current.id, wasComplete = newStatus === "Complete";
   closeDetail();
