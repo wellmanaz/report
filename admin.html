@@ -53,7 +53,16 @@
   #topbar .spacer{flex:1;}
   .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);}
   #signout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--ink);}
-  #map{flex:1;}
+  #map-wrap{flex:1;position:relative;}
+  #map{position:absolute;inset:0;}
+  #map-loading{position:absolute;inset:0;z-index:450;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:12px;
+    background:rgba(253,252,250,.72);}
+  #map-loading.show{display:flex;}
+  .ml-spinner{width:42px;height:42px;border:4px solid var(--line);
+    border-top-color:var(--accent);border-radius:50%;animation:mlspin .8s linear infinite;}
+  @keyframes mlspin{to{transform:rotate(360deg);}}
+  #map-loading span{font-size:14px;font-weight:600;color:var(--ink-soft);}
   .legend{
     position:absolute;left:10px;bottom:10px;z-index:400;background:var(--card);
     border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;
@@ -275,7 +284,10 @@
     <div class="spacer"></div>
     <button id="signout">Sign out</button>
   </div>
-  <div id="map"></div>
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="map-loading"><div class="ml-spinner"></div><span>Loading issues…</span></div>
+  </div>
   <div class="legend">
     <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
     <label class="row"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
@@ -424,8 +436,7 @@ async function tryLogin(){
   const pw = $("pw").value.trim();
   if (!pw) return;
   setPw(pw);
-  $("login-err").textContent = "Checking…";
-  await loadReports(true);
+  await loadReports(true);   // shows the map + spinner immediately, then drops pins
 }
 
 $("signout").addEventListener("click", () => { clearPw(); location.href = HOME_URL; });
@@ -537,13 +548,25 @@ $("f-complete").addEventListener("change", () => {
 });
 
 /* ---------- Load ---------- */
+function setMapLoading(on){ $("map-loading").classList.toggle("show", !!on); }
+
 async function loadReports(fromLogin, refit){
   const wantCompleted = $("f-complete").checked;   // skip Completed unless the filter is on
+  // Reveal the map shell right away with a spinner — the backend read is slow, so
+  // the user sees "it's working" instead of a frozen login while reports load.
+  showApp();
+  setMapLoading(true);
   let out;
   try { out = await api({ action:"adminList", password:getPw(), includeCompleted: wantCompleted }); }
-  catch(e){ if (fromLogin) $("login-err").textContent = "Network error — try again."; else toast("Network error."); return; }
+  catch(e){
+    setMapLoading(false);
+    if (fromLogin){ clearPw(); showLogin("Network error — try again."); }
+    else toast("Network error.");
+    return;
+  }
 
   if (!out.ok){
+    setMapLoading(false);
     if (out.auth === false){
       clearPw();
       if (fromLogin){
@@ -551,19 +574,19 @@ async function loadReports(fromLogin, refit){
         if (pwFails >= 3){ window.location.href = HOME_URL; return; }   // 3 strikes -> main screen
         showLogin("Incorrect password. " + (3 - pwFails) + (pwFails === 2 ? " try left." : " tries left."));
       } else {
-        showLogin("");
+        showLogin("");   // mid-session expiry -> back to login
       }
       return;
     }
-    if (fromLogin) $("login-err").textContent = out.error || "Error."; else toast(out.error || "Error.");
+    if (fromLogin){ clearPw(); showLogin(out.error || "Error."); } else toast(out.error || "Error.");
     return;
   }
   pwFails = 0;
   vendorName = out.vendor || "";
   $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
-  showApp();
   allReports = out.reports || [];
   completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
+  setMapLoading(false);
   drawMarkers(refit !== false);
 }
 
