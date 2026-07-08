@@ -384,7 +384,7 @@ function insideBoundary(lat, lng){
 }
 
 const $ = id => document.getElementById(id);
-let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null, pinEdit = null;
+let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null, pinEdit = null, completedLoaded = false;
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -526,13 +526,21 @@ function drawMarkers(fit){
   if (fit && pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
 }
 
-["f-open", "f-inproc", "f-complete"].forEach(id =>
+["f-open", "f-inproc"].forEach(id =>
   $(id).addEventListener("change", () => drawMarkers(false)));
+
+// Completed reports aren't loaded at login (keeps login fast). The first time
+// the Complete filter is switched on, fetch them; after that it's a local toggle.
+$("f-complete").addEventListener("change", () => {
+  if ($("f-complete").checked && !completedLoaded) loadReports(false, false);
+  else drawMarkers(false);
+});
 
 /* ---------- Load ---------- */
 async function loadReports(fromLogin, refit){
+  const wantCompleted = $("f-complete").checked;   // skip Completed unless the filter is on
   let out;
-  try { out = await api({ action:"adminList", password:getPw(), includeCompleted: true }); }
+  try { out = await api({ action:"adminList", password:getPw(), includeCompleted: wantCompleted }); }
   catch(e){ if (fromLogin) $("login-err").textContent = "Network error — try again."; else toast("Network error."); return; }
 
   if (!out.ok){
@@ -555,6 +563,7 @@ async function loadReports(fromLogin, refit){
   $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
   showApp();
   allReports = out.reports || [];
+  completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
   drawMarkers(refit !== false);
 }
 
