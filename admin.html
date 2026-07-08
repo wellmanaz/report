@@ -729,9 +729,9 @@ async function update(newStatus){
   let note = $("d-note").value.trim();
   // Moving to In Process without a note: ask for one so the team leaves an update.
   if (newStatus === "In Process" && !note){
-    const entered = await askNote("Add a note for this update — what's being done, or an ETA:");
+    const entered = await askNote("Add a note for this update — what's being done, or an ETA. Leave blank to log a simple “In process”.");
     if (entered === null) return;          // cancelled — leave the status unchanged
-    note = entered;                        // saving with empty text proceeds without a note
+    note = entered || "In process";        // blank -> generic note (stamped with name + time)
   }
   const id = current.id, wasComplete = newStatus === "Complete";
   closeDetail();
