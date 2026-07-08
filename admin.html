@@ -676,8 +676,14 @@ window.addEventListener("popstate", () => {
 /* ---------- Update ---------- */
 async function update(newStatus){
   if (!current) return;
+  let note = $("d-note").value.trim();
+  // Moving to In Process without a note: prompt for one so the team leaves an update.
+  if (newStatus === "In Process" && !note){
+    const entered = prompt("Add a note for this update — what's being done, or an ETA:");
+    if (entered === null) return;          // cancelled — leave the status unchanged
+    note = entered.trim();                 // OK with empty text proceeds without a note
+  }
   const id = current.id, wasComplete = newStatus === "Complete";
-  const note = $("d-note").value.trim();
   closeDetail();
   let out;
   try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus, note:note }); }
