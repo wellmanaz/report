@@ -225,6 +225,10 @@
   .modal-card p{font-size:15.5px;font-weight:600;color:var(--ink);margin-bottom:12px;}
   .modal-card textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
     font-size:15px;font-family:inherit;min-height:84px;resize:vertical;background:#FDFCFA;}
+  .modal-label{font-size:13px;font-weight:600;color:var(--ink-soft);margin:0 0 6px;}
+  .modal-card input[type=date]{width:100%;border:1px solid var(--line);border-radius:10px;
+    padding:10px;font-size:15px;font-family:inherit;background:#FDFCFA;color:var(--ink);
+    margin-bottom:10px;-webkit-appearance:none;}
   .modal-btns{display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:14px;}
 
   /* Desktop: the detail panel becomes a centered card instead of a full-width
@@ -252,7 +256,7 @@
   /* ---- Snackbar ---- */
   #snack{
     position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(120%);
-    z-index:700;background:#26211A;color:#fff;border-radius:12px;padding:12px 16px;
+    z-index:950;background:#26211A;color:#fff;border-radius:12px;padding:12px 16px;
     display:flex;align-items:center;gap:16px;font-size:14px;
     opacity:0;visibility:hidden;pointer-events:none;
     transition:transform .2s ease, opacity .2s ease, visibility .2s;
@@ -319,6 +323,7 @@
     <select id="d-type-select" class="type-select" style="display:none"></select>
     <p class="meta" id="d-area"></p>
     <p class="meta" id="d-date"></p>
+    <p class="meta" id="d-eta"></p>
 
     <div class="notes-head">Notes</div>
     <div id="d-notes" class="notes-thread"></div>
@@ -347,6 +352,10 @@
 <div id="notemodal" class="modal">
   <div class="modal-card">
     <p id="notemodal-msg"></p>
+    <div id="notemodal-eta-wrap" style="display:none">
+      <p class="modal-label">Estimated completion date (required)</p>
+      <input type="date" id="notemodal-eta">
+    </div>
     <textarea id="notemodal-input" maxlength="2000" placeholder="Type a note…"></textarea>
     <div class="modal-btns">
       <button id="notemodal-cancel" class="linkbtn" type="button">Cancel</button>
@@ -623,6 +632,8 @@ function openDetail(r){
     $("d-area").textContent = ""; $("d-area").onclick = null;
   }
   $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
+  $("d-eta").textContent = (r.eta && r.status !== "Complete")
+    ? ("🗓 Estimated completion " + new Date(r.eta).toLocaleDateString()) : "";
   $("d-note").value = "";
   cancelEditDesc();            // reset the description editor to read mode
   notesEditIndex = -1;
@@ -727,16 +738,24 @@ window.addEventListener("popstate", () => {
   if ($("sheet").classList.contains("show")) hideSheet();
 });
 
-/* Small in-app modal that asks for a note. Resolves to the text, or null if
-   cancelled. Used instead of window.prompt so there's no browser title/URL. */
-function askNote(message){
+/* Small in-app modal for status-update details. Resolves to { note, eta } or
+   null if cancelled. Used instead of window.prompt so there's no browser
+   title/URL. opts: requireEta (date must be picked before Save), showNote
+   (default true), initialNote (prefill the textarea). */
+function askUpdateInfo(message, opts){
+  opts = opts || {};
   return new Promise(resolve => {
     const modal = $("notemodal"), input = $("notemodal-input");
+    const etaWrap = $("notemodal-eta-wrap"), etaInput = $("notemodal-eta");
     const saveBtn = $("notemodal-save"), cancelBtn = $("notemodal-cancel");
     $("notemodal-msg").textContent = message;
-    input.value = "";
+    input.value = opts.initialNote || "";
+    input.style.display = opts.showNote === false ? "none" : "";
+    etaWrap.style.display = opts.requireEta ? "block" : "none";
+    etaInput.value = "";
+    etaInput.min = new Date().toISOString().slice(0, 10);   // no past-dated estimates
     modal.classList.add("show");
-    setTimeout(() => input.focus(), 50);
+    setTimeout(() => (opts.requireEta ? etaInput : input).focus(), 50);
     function cleanup(){
       modal.classList.remove("show");
       saveBtn.removeEventListener("click", onSave);
@@ -744,7 +763,11 @@ function askNote(message){
       modal.removeEventListener("click", onBackdrop);
       document.removeEventListener("keydown", onKey);
     }
-    function onSave(){ const v = input.value.trim(); cleanup(); resolve(v); }
+    function onSave(){
+      if (opts.requireEta && !etaInput.value){ toast("Pick an estimated completion date first."); return; }
+      const v = { note: input.value.trim(), eta: etaInput.value || "" };
+      cleanup(); resolve(v);
+    }
     function onCancel(){ cleanup(); resolve(null); }
     function onBackdrop(e){ if (e.target === modal) onCancel(); }
     function onKey(e){ if (e.key === "Escape") onCancel(); }
@@ -759,16 +782,29 @@ function askNote(message){
 async function update(newStatus){
   if (!current) return;
   let note = $("d-note").value.trim();
-  // Moving to In Process without a note: ask for one so the team leaves an update.
-  if (newStatus === "In Process" && !note){
-    const entered = await askNote("Add a note for this update — what's being done, or an ETA. Leave blank to log a simple “In process”.");
-    if (entered === null) return;          // cancelled — leave the status unchanged
-    note = entered || "In process";        // blank -> generic note (stamped with name + time)
+  let eta = "";
+  const fromOpen = current.status !== "In Process" && current.status !== "Complete";
+  if (newStatus === "In Process"){
+    if (fromOpen){
+      // Starting work on an open report: an estimated completion date is
+      // REQUIRED (the backend enforces it too). Note stays optional.
+      const info = await askUpdateInfo(
+        "Starting work — set an estimated completion date. Add a note if helpful.",
+        { requireEta: true, initialNote: note });
+      if (info === null) return;           // cancelled — leave the status unchanged
+      note = info.note || "In process";    // blank -> generic note (stamped with name + time)
+      eta = info.eta;
+    } else if (!note){
+      // Reopening (Complete -> In Process) without a note: ask for one.
+      const info = await askUpdateInfo("Add a note for this update — what's being done, or an ETA. Leave blank to log a simple “In process”.", {});
+      if (info === null) return;           // cancelled — leave the status unchanged
+      note = info.note || "In process";
+    }
   }
   const id = current.id, wasComplete = newStatus === "Complete";
   closeDetail();
   let out;
-  try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus, note:note }); }
+  try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus, note:note, eta:eta }); }
   catch(e){ toast("Network error — not saved."); return; }
   if (!out.ok){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
@@ -1029,10 +1065,20 @@ function openBundleDetail(members){
 async function updateBundle(bundleId, newStatus){
   if (!bundleId) return;
   const note = ($("b-note") && $("b-note").value.trim()) || "";
+  let eta = "";
+  // Starting work on a bundle with any open member: estimated completion date
+  // required (the bundle's note comes from its own textarea, so hide the note field).
+  if (newStatus === "In Process" && currentBundle &&
+      currentBundle.some(m => m.status !== "In Process" && m.status !== "Complete")){
+    const info = await askUpdateInfo("Starting work on this bundle — set an estimated completion date.",
+      { requireEta: true, showNote: false });
+    if (info === null) return;             // cancelled — leave the status unchanged
+    eta = info.eta;
+  }
   const wasComplete = newStatus === "Complete";
   closeDetail();
   let out;
-  try { out = await api({ action:"adminUpdate", password:getPw(), bundleId:bundleId, status:newStatus, note:note }); }
+  try { out = await api({ action:"adminUpdate", password:getPw(), bundleId:bundleId, status:newStatus, note:note, eta:eta }); }
   catch(e){ toast("Network error — not saved."); return; }
   if (!out.ok){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
