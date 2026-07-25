@@ -229,6 +229,45 @@
   .modal-card input[type=date]{width:100%;border:1px solid var(--line);border-radius:10px;
     padding:10px;font-size:15px;font-family:inherit;background:#FDFCFA;color:var(--ink);
     margin-bottom:10px;-webkit-appearance:none;}
+
+  /* Settings panel */
+  #settings-btn{background:none;border:1px solid var(--line);border-radius:8px;
+    padding:6px 10px;font-size:15px;color:var(--ink);line-height:1;}
+  .set-label{font-size:13px;font-weight:600;color:var(--ink-soft);margin:12px 0 4px;}
+  .modal-card input[type=email],.modal-card input[type=tel],.modal-card input[type=time],
+  .modal-card input[type=text],.modal-card input[type=password],.modal-card select{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;background:#FDFCFA;color:var(--ink);}
+  .set-hint{font-size:12px;color:#B0A79A;margin-top:4px;}
+  .set-check{display:flex;align-items:flex-start;gap:9px;margin:12px 0 0;font-size:14.5px;cursor:pointer;}
+  .set-check input{width:18px;height:18px;margin-top:1px;flex:none;}
+  .time-row{display:flex;gap:8px;align-items:center;}
+  .time-row span{font-size:13px;color:var(--ink-soft);}
+  .modal-card{max-height:86vh;overflow:auto;}
+
+  /* Manage users list */
+  .urow{border-top:1px solid var(--line);padding:10px 0;}
+  .urow .u-main{font-size:14.5px;font-weight:600;}
+  .urow .u-main .u-badge{font-weight:400;font-size:12px;color:var(--ink-soft);}
+  .urow .u-sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
+  .urow .u-acts{display:flex;gap:14px;margin-top:5px;flex-wrap:wrap;}
+  .u-disabled .u-main{color:var(--ink-soft);text-decoration:line-through;}
+
+  /* Enrollment (invite link landing) */
+  #enroll{position:fixed;inset:0;z-index:55;background:var(--bg);display:none;
+    align-items:center;justify-content:center;padding:20px;overflow:auto;}
+  #enroll.show{display:flex;}
+  #enroll .card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);
+    border-radius:16px;padding:22px;margin:auto;}
+  #enroll .eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-deep);font-weight:600;}
+  #enroll h1{font-size:22px;font-weight:700;margin:4px 0 4px;}
+  #enroll .who-line{font-size:14px;color:var(--ink-soft);margin-bottom:8px;}
+  #enroll input,#enroll select{width:100%;border:1px solid var(--line);border-radius:10px;
+    padding:11px;font-size:16px;font-family:inherit;background:#FDFCFA;color:var(--ink);}
+  #enroll .go{width:100%;margin-top:16px;border:none;border-radius:12px;background:var(--accent);
+    color:#fff;padding:14px;font-size:16px;font-weight:650;font-family:inherit;cursor:pointer;}
+  #enroll .go:disabled{opacity:.6;}
+  #enroll .err{color:var(--clay);font-size:14px;margin-top:10px;min-height:18px;}
   .modal-btns{display:flex;justify-content:flex-end;align-items:center;gap:16px;margin-top:14px;}
 
   /* Desktop: the detail panel becomes a centered card instead of a full-width
@@ -252,6 +291,9 @@
   .btn-start{background:var(--inproc);}
   .btn-done{background:var(--accent);}
   .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink)!important;}
+  .btn-request{background:none;border:1.5px solid #E11900!important;color:#E11900!important;}
+  .updreq-line{color:#E11900;font-weight:600;}
+  .dot.ring{background:#fff;border:3px solid #E11900;box-shadow:none;}
 
   /* ---- Snackbar ---- */
   #snack{
@@ -286,6 +328,7 @@
       <div class="who" id="who"></div>
     </div>
     <div class="spacer"></div>
+    <button id="settings-btn" title="Notification settings" aria-label="Settings">⚙</button>
     <button id="signout">Sign out</button>
   </div>
   <div id="map-wrap">
@@ -294,6 +337,7 @@
   </div>
   <div class="legend">
     <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
+    <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
     <label class="row"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
     <label class="row"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
     <label class="row"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Complete</label>
@@ -324,6 +368,7 @@
     <p class="meta" id="d-area"></p>
     <p class="meta" id="d-date"></p>
     <p class="meta" id="d-eta"></p>
+    <p class="meta updreq-line" id="d-updreq"></p>
 
     <div class="notes-head">Notes</div>
     <div id="d-notes" class="notes-thread"></div>
@@ -347,6 +392,83 @@
 <div id="mergebar">
   <span>Merge mode — tap the report to combine with the one you chose.</span>
   <button id="mergebar-cancel" type="button">Cancel</button>
+</div>
+
+<div id="settingsmodal" class="modal">
+  <div class="modal-card">
+    <p id="set-title">Notification settings</p>
+    <div class="set-label">Email</div>
+    <input type="email" id="set-email" autocomplete="email" placeholder="you@example.com">
+    <div class="set-label">Cell phone</div>
+    <input type="tel" id="set-phone" autocomplete="tel" placeholder="(480) 555-0123">
+    <div class="set-hint">Optional — text updates coming soon</div>
+    <div class="set-label">Report emails</div>
+    <select id="set-digest">
+      <option value="None">None</option>
+      <option value="Daily">Daily digest + weekly report</option>
+      <option value="Weekly">Weekly report only (Fridays)</option>
+    </select>
+    <div id="set-urgent" style="display:none">
+      <label class="set-check"><input type="checkbox" id="set-urgent-optin">
+        <span>Email me immediately about <strong>urgent</strong> issues</span></label>
+      <div class="set-label">Only notify me between</div>
+      <div class="time-row">
+        <input type="time" id="set-urgent-from" value="07:00"><span>and</span>
+        <input type="time" id="set-urgent-to" value="21:00">
+      </div>
+      <div class="set-hint">Urgent alerts outside these hours are held and delivered when the window opens.</div>
+    </div>
+    <div id="set-updreq" style="display:none">
+      <label class="set-check"><input type="checkbox" id="set-updreq-optin">
+        <span>Email me when someone requests an update on an issue</span></label>
+    </div>
+    <div id="set-users-wrap" style="display:none;margin-top:16px">
+      <button id="set-users-btn" class="btn-note" type="button">Manage users</button>
+    </div>
+    <div class="modal-btns">
+      <button id="set-cancel" class="linkbtn" type="button">Close</button>
+      <button id="set-save" class="btn-note" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="usersmodal" class="modal">
+  <div class="modal-card">
+    <p>Manage users</p>
+    <div class="set-label">Invite someone new</div>
+    <input type="text" id="inv-name" placeholder="Full name" style="margin-bottom:8px">
+    <input type="email" id="inv-email" placeholder="Email" style="margin-bottom:8px">
+    <select id="inv-position"></select>
+    <button id="inv-send" class="btn-note" type="button" style="margin-top:10px">Send invite</button>
+    <div class="set-label" style="margin-top:18px">Everyone</div>
+    <div id="users-list"></div>
+    <div class="modal-btns"><button id="users-close" class="linkbtn" type="button">Close</button></div>
+  </div>
+</div>
+
+<div id="enroll">
+  <div class="card">
+    <div class="eyebrow">Andersen Springs HOA</div>
+    <h1>Set up your login</h1>
+    <div class="who-line" id="en-who"></div>
+    <div class="set-label">Choose a password</div>
+    <input type="password" id="en-pw" autocomplete="new-password">
+    <div class="set-label">Confirm password</div>
+    <input type="password" id="en-pw2" autocomplete="new-password">
+    <div class="set-label">Email</div>
+    <input type="email" id="en-email" autocomplete="email">
+    <div class="set-label">Cell phone</div>
+    <input type="tel" id="en-phone" autocomplete="tel">
+    <div class="set-hint">Optional — text updates coming soon</div>
+    <div class="set-label">Report emails</div>
+    <select id="en-digest">
+      <option value="Weekly" selected>Weekly report only (Fridays)</option>
+      <option value="Daily">Daily digest + weekly report</option>
+      <option value="None">None</option>
+    </select>
+    <button class="go" id="en-go" type="button">Create my login</button>
+    <div class="err" id="en-err"></div>
+  </div>
 </div>
 
 <div id="notemodal" class="modal">
@@ -406,6 +528,14 @@ function insideBoundary(lat, lng){
 
 const $ = id => document.getElementById(id);
 let map, markersLayer, vendorName = "", allReports = [], current = null, currentBundle = null, snackTimer = null, pwFails = 0, mapView = null, mapViewMarker = null, mergeSourceId = null, pinEdit = null, completedLoaded = false;
+
+/* The signed-in user (role + permissions), from the adminList response. A
+   legacy backend that doesn't send it gets full manage rights, no request-
+   update (matches old behavior). The backend re-checks every action anyway. */
+let me = null;
+const canManage  = () => me ? !!(me.perms && me.perms.manage) : true;
+const canRequest = () => me ? !!(me.perms && me.perms.requestUpdate) : false;
+const isSuper    = () => !!(me && me.perms && me.perms.superUser);
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
@@ -471,21 +601,25 @@ function initMap(){
   }
 }
 
-/* Which reports to show, per the legend filter checkboxes. Urgent always shows. */
+/* Which reports to show, per the legend filter checkboxes. Urgent and
+   update-requested issues always show — a pending request stays on the map
+   no matter which status boxes are ticked, until an update is provided. */
 function isVisible(r){
-  if (r.urgent) return true;
+  if (r.urgent || r.updateRequested) return true;
   if (r.status === "Complete")   return $("f-complete").checked;
   if (r.status === "In Process") return $("f-inproc").checked;
   return $("f-open").checked;                       // blank status = Open
 }
 
 function singleMarker(r){
-  return r.urgent
-    ? L.marker([r.lat, r.lng], { icon: L.divIcon({
+  if (r.urgent)
+    return L.marker([r.lat, r.lng], { icon: L.divIcon({
         className: "urgent-marker", html: '<div class="urgent-pin"></div>',
-        iconSize: [18, 18], iconAnchor: [9, 9] }) })
-    : L.circleMarker([r.lat, r.lng], {
-        radius: 10, fillColor: colorFor(r), color: "#fff", weight: 2, fillOpacity: 0.95 });
+        iconSize: [18, 18], iconAnchor: [9, 9] }) });
+  const upd = !!r.updateRequested;   // pending update request -> red outline
+  return L.circleMarker([r.lat, r.lng], {
+      radius: 10, fillColor: colorFor(r),
+      color: upd ? "#E11900" : "#fff", weight: upd ? 3.5 : 2, fillOpacity: 0.95 });
 }
 
 /* Aggregate status / color across a bundle's members. */
@@ -504,8 +638,10 @@ function bundlePrimary(members){
 }
 function bundleIcon(members){
   const cls = "bundle-pin" + (members.some(m => m.urgent) ? " pulse-red" : "");
+  const upd = members.some(m => m.updateRequested);   // any member awaiting an update -> red ring
   return L.divIcon({ className: "bundle-marker", iconSize: [28, 28], iconAnchor: [14, 14],
-    html: '<div class="' + cls + '" style="background:' + bundleColor(members) + '">' + members.length + '</div>' });
+    html: '<div class="' + cls + '" style="background:' + bundleColor(members) +
+      (upd ? ";border-color:#E11900" : "") + '">' + members.length + '</div>' });
 }
 
 function drawMarkers(fit){
@@ -592,7 +728,9 @@ async function loadReports(fromLogin, refit){
   }
   pwFails = 0;
   vendorName = out.vendor || "";
-  $("who").textContent = vendorName ? ("Signed in as " + vendorName) : "";
+  me = out.user || null;
+  const whoName = (me && me.name) || vendorName;
+  $("who").textContent = whoName ? ("Signed in as " + whoName + (me && me.position ? " · " + me.position : "")) : "";
   allReports = out.reports || [];
   completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
   setMapLoading(false);
@@ -619,21 +757,25 @@ function openDetail(r){
     $("d-photo").onclick = null;
     $("d-noimg").style.display = "flex";
     $("d-noimg").innerHTML = '<div class="ni-pin">📍</div><div class="ni-text">No Image</div>' +
-      '<div class="ni-sub">' + (r.area ? escapeHtml(r.area) + " · " : "") + (hasCoords ? "tap to move pin" : "no location") + "</div>";
-    $("d-noimg").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", r.id) : null;
+      '<div class="ni-sub">' + (r.area ? escapeHtml(r.area) + " · " : "") +
+      (hasCoords ? (canManage() ? "tap to move pin" : "tap to view on map") : "no location") + "</div>";
+    $("d-noimg").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", canManage() ? r.id : null) : null;
   }
   $("d-desc").textContent = r.description || "(no description)";
+  $("d-desc-edit").style.display = canManage() ? "" : "none";
   hideTypePicker(); setTypeText();
   if (r.area || hasCoords) {
     $("d-area").innerHTML = '📍 <span class="loc-link">' + escapeHtml(r.area || "View on map") +
-      (hasCoords ? '</span> <span class="loc-edit">tap to move pin</span>' : '</span>');
-    $("d-area").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", r.id) : null;
+      (hasCoords && canManage() ? '</span> <span class="loc-edit">tap to move pin</span>' : '</span>');
+    $("d-area").onclick = hasCoords ? () => openMapView(r.lat, r.lng, r.area || "Reported location", canManage() ? r.id : null) : null;
   } else {
     $("d-area").textContent = ""; $("d-area").onclick = null;
   }
   $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
   $("d-eta").textContent = (r.eta && r.status !== "Complete")
     ? ("🗓 Estimated completion " + new Date(r.eta).toLocaleDateString()) : "";
+  $("d-updreq").textContent = r.updateRequested
+    ? ("⟳ Update requested " + r.updateRequested.replace(/^\[|\]$/g, "")) : "";
   $("d-note").value = "";
   cancelEditDesc();            // reset the description editor to read mode
   notesEditIndex = -1;
@@ -641,12 +783,17 @@ function openDetail(r){
 
   const actions = $("d-actions");
   actions.innerHTML = "";
-  if (r.status !== "In Process" && r.status !== "Complete")
-    actions.appendChild(mkBtn("Mark In Process", "btn-start", () => update("In Process")));
-  if (r.status !== "Complete")
-    actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
-  if (r.status === "Complete")
-    actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
+  if (canManage()){
+    if (r.status !== "In Process" && r.status !== "Complete")
+      actions.appendChild(mkBtn("Mark In Process", "btn-start", () => update("In Process")));
+    if (r.status !== "Complete")
+      actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
+    if (r.status === "Complete")
+      actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
+  }
+  // Request Update: open/in-process only, once per pending request.
+  if (canRequest() && r.status !== "Complete" && !r.updateRequested)
+    actions.appendChild(mkBtn("Request Update", "btn-request", () => requestUpdate(r)));
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
@@ -815,6 +962,27 @@ async function update(newStatus){
   else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
 }
 
+/* ---------- Request Update ---------- */
+async function requestUpdate(r){
+  const info = await askUpdateInfo("Request an update on this issue — optionally add a note for the team.", {});
+  if (info === null) return;   // cancelled
+  let out;
+  try { out = await api({ action:"adminRequestUpdate", password:getPw(), id:r.id, note:info.note }); }
+  catch(e){ toast("Network error — not sent."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't request the update."); return;
+  }
+  r.updateRequested = out.updateRequested || "requested";
+  r.notes = out.notes || r.notes;
+  const rep = allReports.find(x => x.id === r.id);
+  if (rep){ rep.updateRequested = r.updateRequested; rep.notes = r.notes; }
+  if (current && current.id === r.id) openDetail(rep || r);        // re-render the single card
+  else if (currentBundle) openBundleDetail(currentBundle);         // re-render the bundle cards
+  drawMarkers(false);
+  toast("Update requested.");
+}
+
 /* ---------- Notes thread ---------- */
 /* The notes log is newest-first, entries separated by a blank line, each stored
    as "[time · author] body". Render each as a card with a pencil to edit it. */
@@ -889,6 +1057,13 @@ async function saveNote(){
   }
   current.notes = out.notes || "";
   const rep = allReports.find(x => x.id === current.id); if (rep) rep.notes = current.notes;
+  // A new note answers any pending update request (mirrors the backend).
+  if (current.updateRequested){
+    current.updateRequested = "";
+    if (rep) rep.updateRequested = "";
+    $("d-updreq").textContent = "";
+    drawMarkers(false);
+  }
   $("d-note").value = "";
   renderNotes(current.notes);
   toast("Note added.");
@@ -937,11 +1112,13 @@ $("d-type-select").innerHTML = '<option value="">— none —</option>' +
   ISSUE_TYPES.map(t => '<option value="' + t + '">' + t + '</option>').join("");
 
 function setTypeText(){
-  $("d-type").textContent = (current && current.issueType ? ("🏷️ " + current.issueType) : "🏷️ Set category") + "  ✎";
+  $("d-type").textContent = canManage()
+    ? ((current && current.issueType ? ("🏷️ " + current.issueType) : "🏷️ Set category") + "  ✎")
+    : ("🏷️ " + ((current && current.issueType) || "No category"));
 }
 function hideTypePicker(){ $("d-type-select").style.display = "none"; $("d-type").style.display = ""; }
 function showTypePicker(){
-  if (!current) return;
+  if (!current || !canManage()) return;
   $("d-type-select").value = current.issueType || "";
   $("d-type").style.display = "none";
   $("d-type-select").style.display = "";
@@ -987,9 +1164,11 @@ function openBundleDetail(members){
     '<span class="pill" style="background:' + bundleColor(members) + '">' +
       (urgent ? "⚠ " : "") + members.length + " bundled reports" + (agg ? " · " + escapeHtml(agg) : " · Open") +
     '</span>' +
-    '<p class="meta" style="margin-top:8px">Scroll through the reports below. Uncheck one to split it out of the bundle.</p>' +
+    '<p class="meta" style="margin-top:8px">' + (canManage()
+      ? "Scroll through the reports below. Uncheck one to split it out of the bundle."
+      : "Scroll through the reports below.") + '</p>' +
     '<div id="b-members"></div>' +
-    '<textarea id="b-note" placeholder="Resolution note (optional) — emailed to each reporter"></textarea>' +
+    (canManage() ? '<textarea id="b-note" placeholder="Resolution note (optional) — emailed to each reporter"></textarea>' : '') +
     '<div class="actions" id="b-actions"></div>';
 
   const list = b.querySelector("#b-members");
@@ -1023,7 +1202,7 @@ function openBundleDetail(members){
       ph.addEventListener("click", () => openMapView(m.lat, m.lng, m.area || "Reported location"));
       wrap.appendChild(ph);
     }
-    wrap.appendChild(checkLabel());          // checkbox overlays the top-right
+    if (canManage()) wrap.appendChild(checkLabel());   // unbundle checkbox overlays the top-right
     card.appendChild(wrap);
 
     const desc = document.createElement("p");
@@ -1043,18 +1222,33 @@ function openBundleDetail(members){
     d.textContent = m.timestamp ? ("Reported " + new Date(m.timestamp).toLocaleString()) : "";
     card.appendChild(d);
 
+    if (m.updateRequested){
+      const u = document.createElement("p");
+      u.className = "meta updreq-line";
+      u.textContent = "⟳ Update requested " + m.updateRequested.replace(/^\[|\]$/g, "");
+      card.appendChild(u);
+    } else if (canRequest() && m.status !== "Complete"){
+      const btn = document.createElement("button");
+      btn.className = "linkbtn"; btn.style.color = "#E11900"; btn.type = "button";
+      btn.textContent = "⟳ Request update";
+      btn.addEventListener("click", () => requestUpdate(m));
+      card.appendChild(btn);
+    }
+
     list.appendChild(card);
   });
 
   const actions = b.querySelector("#b-actions");
   const allComplete = members.every(m => m.status === "Complete");
   const allInProc   = members.every(m => m.status === "In Process");
-  if (!allComplete && !allInProc)
-    actions.appendChild(mkBtn("Mark all In Process", "btn-start", () => updateBundle(bundleId, "In Process")));
-  if (!allComplete)
-    actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
-  if (allComplete)
-    actions.appendChild(mkBtn("Reopen all", "btn-reopen", () => updateBundle(bundleId, "In Process")));
+  if (canManage()){
+    if (!allComplete && !allInProc)
+      actions.appendChild(mkBtn("Mark all In Process", "btn-start", () => updateBundle(bundleId, "In Process")));
+    if (!allComplete)
+      actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
+    if (allComplete)
+      actions.appendChild(mkBtn("Reopen all", "btn-reopen", () => updateBundle(bundleId, "In Process")));
+  }
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
@@ -1125,6 +1319,175 @@ async function mergeWith(targetId){
   toast("Merged.");
 }
 
+/* ---------- Settings gear ---------- */
+const padTime = t => (t && t.length === 4 ? "0" + t : t);   // "7:00" -> "07:00" for <input type=time>
+
+async function openSettings(){
+  let out;
+  try { out = await api({ action:"adminGetProfile", password:getPw() }); }
+  catch(e){ toast("Network error."); return; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't load settings."); return;
+  }
+  const p = out.profile;
+  $("set-title").textContent = "Notification settings — " + (p.name || "");
+  $("set-email").value = p.email || "";
+  $("set-phone").value = p.phone || "";
+  $("set-digest").value = ["None","Daily","Weekly"].indexOf(p.digest) >= 0 ? p.digest : "None";
+  $("set-urgent").style.display = p.urgentEligible ? "block" : "none";
+  $("set-urgent-optin").checked = !!p.urgentOptIn;
+  const hm = String(p.urgentHours || "").match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  $("set-urgent-from").value = hm ? padTime(hm[1]) : "07:00";
+  $("set-urgent-to").value   = hm ? padTime(hm[2]) : "21:00";
+  $("set-updreq").style.display = p.updateReqEligible ? "block" : "none";
+  $("set-updreq-optin").checked = !!p.updateReqEmails;
+  $("set-users-wrap").style.display = isSuper() ? "block" : "none";
+  $("settingsmodal").classList.add("show");
+}
+$("settings-btn").addEventListener("click", openSettings);
+$("set-cancel").addEventListener("click", () => $("settingsmodal").classList.remove("show"));
+$("settingsmodal").addEventListener("click", e => { if (e.target === $("settingsmodal")) $("settingsmodal").classList.remove("show"); });
+
+$("set-save").addEventListener("click", async () => {
+  const btn = $("set-save"); btn.disabled = true;
+  const hours = ($("set-urgent-from").value && $("set-urgent-to").value)
+    ? ($("set-urgent-from").value + "-" + $("set-urgent-to").value) : "";
+  let out;
+  try {
+    out = await api({ action:"adminSaveProfile", password:getPw(),
+      email: $("set-email").value.trim(),
+      phone: $("set-phone").value.trim(),
+      digest: $("set-digest").value,
+      urgentOptIn: $("set-urgent-optin").checked,
+      urgentHours: hours,
+      updateReqEmails: $("set-updreq-optin").checked });
+  } catch(e){ out = { ok:false, error:"Network error — not saved." }; }
+  btn.disabled = false;
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save."); return;
+  }
+  $("settingsmodal").classList.remove("show");
+  toast("Settings saved.");
+});
+
+/* ---------- Manage users (super users) ---------- */
+async function openUsers(){
+  $("settingsmodal").classList.remove("show");
+  const ok = await refreshUsers();
+  if (ok) $("usersmodal").classList.add("show");
+}
+$("set-users-btn").addEventListener("click", openUsers);
+$("users-close").addEventListener("click", () => $("usersmodal").classList.remove("show"));
+$("usersmodal").addEventListener("click", e => { if (e.target === $("usersmodal")) $("usersmodal").classList.remove("show"); });
+
+async function refreshUsers(){
+  let out;
+  try { out = await api({ action:"adminListUsers", password:getPw() }); }
+  catch(e){ toast("Network error."); return false; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return false; }
+    toast(out.error || "Couldn't load users."); return false;
+  }
+  $("inv-position").innerHTML = (out.positions || [])
+    .map(p => '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>').join("");
+  const list = $("users-list");
+  list.innerHTML = "";
+  (out.users || []).forEach(u => {
+    const div = document.createElement("div");
+    div.className = "urow" + (u.status === "Disabled" ? " u-disabled" : "");
+    const main = document.createElement("div");
+    main.className = "u-main";
+    main.innerHTML = escapeHtml(u.name || "(unnamed)") +
+      ' <span class="u-badge">· ' + escapeHtml(u.position) +
+      (u.status !== "Active" ? " · " + escapeHtml(u.status) : "") +
+      (u.self ? " · you" : "") + '</span>';
+    const sub = document.createElement("div");
+    sub.className = "u-sub";
+    sub.textContent = (u.email || "no email") + " · digest: " + (u.digest || "None") +
+      " · urgent alerts: " + (u.urgentEligible ? "allowed" : "not allowed");
+    const acts = document.createElement("div");
+    acts.className = "u-acts";
+    const act = (label, op, confirmMsg) => {
+      const b = document.createElement("button");
+      b.className = "linkbtn"; b.type = "button"; b.textContent = label;
+      b.addEventListener("click", async () => {
+        if (confirmMsg && !window.confirm(confirmMsg)) return;
+        await manageUser(u, op);
+      });
+      acts.appendChild(b);
+    };
+    if (u.status === "Disabled") act("Re-enable", "activate");
+    else if (!u.self) act("Deactivate", "deactivate", "Deactivate " + u.name + "? They won't be able to sign in.");
+    if (u.email) act(u.status === "Invited" ? "Resend invite" : "Reset password", "resetPassword",
+      u.status === "Invited" ? null : "Email " + u.name + " a link to set a new password?");
+    act(u.urgentEligible ? "Block urgent alerts" : "Allow urgent alerts",
+        u.urgentEligible ? "revokeUrgent" : "grantUrgent");
+    div.appendChild(main); div.appendChild(sub); div.appendChild(acts);
+    list.appendChild(div);
+  });
+  return true;
+}
+
+async function manageUser(u, op){
+  let out;
+  try { out = await api({ action:"adminManageUser", password:getPw(), row:u.row, name:u.name, op:op }); }
+  catch(e){ toast("Network error."); return; }
+  if (!out.ok){ toast(out.error || "Couldn't update the user."); return; }
+  toast(op === "resetPassword" ? "Email sent." : "Updated.");
+  refreshUsers();
+}
+
+$("inv-send").addEventListener("click", async () => {
+  const name = $("inv-name").value.trim(), email = $("inv-email").value.trim();
+  if (!name || !email){ toast("Name and email are required."); return; }
+  const btn = $("inv-send"); btn.disabled = true;
+  let out;
+  try { out = await api({ action:"adminInviteUser", password:getPw(), name:name, email:email, position:$("inv-position").value }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  btn.disabled = false;
+  if (!out.ok){ toast(out.error || "Couldn't send the invite."); return; }
+  $("inv-name").value = ""; $("inv-email").value = "";
+  toast("Invite sent to " + email + ".");
+  refreshUsers();
+});
+
+/* ---------- Enrollment (arrival via an invite link) ---------- */
+const inviteToken = new URLSearchParams(location.search).get("invite") || "";
+
+async function startEnroll(){
+  $("login").style.display = "none";
+  let out;
+  try { out = await api({ action:"enrollInfo", token:inviteToken }); }
+  catch(e){ showLogin("Network error — try the invite link again."); return; }
+  if (!out.ok){ showLogin(out.error || "Invalid invite link."); return; }
+  $("en-who").textContent = out.name + " · " + out.position;
+  $("en-email").value = out.email || "";
+  $("enroll").classList.add("show");
+}
+
+$("en-go").addEventListener("click", async () => {
+  const pw = $("en-pw").value.trim(), pw2 = $("en-pw2").value.trim();
+  const err = $("en-err");
+  err.textContent = "";
+  if (pw.length < 4){ err.textContent = "Password must be at least 4 characters."; return; }
+  if (pw !== pw2){ err.textContent = "Passwords don't match."; return; }
+  const btn = $("en-go"); btn.disabled = true;
+  let out;
+  try {
+    out = await api({ action:"enroll", token:inviteToken, password:pw,
+      email:$("en-email").value.trim(), phone:$("en-phone").value.trim(), digest:$("en-digest").value });
+  } catch(e){ out = { ok:false, error:"Network error — try again." }; }
+  btn.disabled = false;
+  if (!out.ok){ err.textContent = out.error || "Couldn't finish enrollment."; return; }
+  // Signed up — drop the token from the URL, store the login, straight to the map.
+  history.replaceState(null, "", location.pathname);
+  $("enroll").classList.remove("show");
+  setPw(pw);
+  loadReports(true);
+});
+
 /* ---------- Snackbar / toast ---------- */
 function snack(msg, undoId){
   $("snack-msg").textContent = msg;
@@ -1152,8 +1515,10 @@ function toast(msg){ snack(msg, null); }
   });
 })();
 
-/* ---------- Boot: resume session if a password is already stored ---------- */
-if (getPw()) loadReports(false); else showLogin("");
+/* ---------- Boot: invite link -> enrollment; else resume or log in ---------- */
+if (inviteToken) startEnroll();
+else if (getPw()) loadReports(false);
+else showLogin("");
 </script>
 </body>
 </html>
