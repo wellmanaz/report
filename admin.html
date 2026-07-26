@@ -449,10 +449,12 @@
       <label class="set-check"><input type="checkbox" id="set-updreq-optin">
         <span>Email me when someone requests an update on an issue</span></label>
     </div>
-    <div class="set-label">Test emails <span style="font-weight:400">(sent only to you)</span></div>
-    <div class="u-acts" style="margin-top:2px">
-      <button id="set-test-weekly" class="linkbtn" type="button">Email me the weekly report</button>
-      <button id="set-test-daily" class="linkbtn" type="button">Email me the daily digest</button>
+    <div id="set-test-wrap" style="display:none">
+      <div class="set-label">Test emails <span style="font-weight:400">(sent only to you)</span></div>
+      <div class="u-acts" style="margin-top:2px">
+        <button id="set-test-weekly" class="linkbtn" type="button">Email me the weekly report</button>
+        <button id="set-test-daily" class="linkbtn" type="button">Email me the daily digest</button>
+      </div>
     </div>
     <div id="set-users-wrap" style="display:none;margin-top:16px">
       <button id="set-users-btn" class="btn-note" type="button">Manage users</button>
@@ -1434,6 +1436,7 @@ async function openSettings(){
   $("set-urgent-to").value   = hm ? padTime(hm[2]) : "21:00";
   $("set-updreq").style.display = p.updateReqEligible ? "block" : "none";
   $("set-updreq-optin").checked = !!p.updateReqEmails;
+  $("set-test-wrap").style.display = isSuper() ? "block" : "none";
   $("set-users-wrap").style.display = isSuper() ? "block" : "none";
   $("settingsmodal").classList.add("show");
 }
