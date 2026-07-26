@@ -72,6 +72,15 @@
   .legend label.row{cursor:pointer;}
   .legend input{margin:0;width:15px;height:15px;}
   .legend .always{color:var(--ink-soft);font-size:11px;}
+  /* Completed-issues date range (shown while the Complete filter is on) */
+  #complete-range{margin:4px 0 2px 21px;display:none;}
+  #complete-range.show{display:block;}
+  #complete-range select{font-size:12px;font-family:inherit;padding:3px 6px;border:1px solid var(--line);
+    border-radius:7px;background:#FDFCFA;color:var(--ink);}
+  #cr-custom{display:none;margin-top:4px;align-items:center;gap:4px;font-size:11px;color:var(--ink-soft);}
+  #cr-custom.show{display:flex;}
+  #cr-custom input{width:112px;height:auto;font-size:11px;font-family:inherit;padding:3px 4px;
+    border:1px solid var(--line);border-radius:7px;background:#FDFCFA;color:var(--ink);}
   .dot{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15);}
   .dot.pulse{animation:upulse 1.2s ease-out infinite;}
 
@@ -341,6 +350,16 @@
     <label class="row"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
     <label class="row"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
     <label class="row"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Complete</label>
+    <div id="complete-range">
+      <select id="cr-mode">
+        <option value="week" selected>Past week</option>
+        <option value="month">Past month</option>
+        <option value="custom">Custom range…</option>
+      </select>
+      <div id="cr-custom">
+        <input type="date" id="cr-from"><span>to</span><input type="date" id="cr-to">
+      </div>
+    </div>
   </div>
 </div>
 
@@ -601,12 +620,29 @@ function initMap(){
   }
 }
 
+/* Completed-issue date range: past week / past month / custom. Filters on the
+   closed date (falls back to the report date for legacy rows without one;
+   rows with no date at all are shown rather than silently hidden). */
+function completeInRange(r){
+  const iso = r.closedAt || r.timestamp;
+  if (!iso) return true;
+  const t = new Date(iso).getTime();
+  if (!isFinite(t)) return true;
+  const mode = $("cr-mode").value;
+  if (mode === "week")  return t >= Date.now() - 7  * 86400000;
+  if (mode === "month") return t >= Date.now() - 30 * 86400000;
+  const from = $("cr-from").value ? new Date($("cr-from").value + "T00:00:00").getTime() : -Infinity;
+  const to   = $("cr-to").value   ? new Date($("cr-to").value   + "T23:59:59").getTime() : Infinity;
+  return t >= from && t <= to;
+}
+
 /* Which reports to show, per the legend filter checkboxes. Urgent and
    update-requested issues always show — a pending request stays on the map
-   no matter which status boxes are ticked, until an update is provided. */
+   no matter which status boxes are ticked, until an update is provided.
+   Completed issues additionally respect the date-range control. */
 function isVisible(r){
   if (r.urgent || r.updateRequested) return true;
-  if (r.status === "Complete")   return $("f-complete").checked;
+  if (r.status === "Complete")   return $("f-complete").checked && completeInRange(r);
   if (r.status === "In Process") return $("f-inproc").checked;
   return $("f-open").checked;                       // blank status = Open
 }
@@ -686,11 +722,27 @@ function drawMarkers(fit){
   $(id).addEventListener("change", () => drawMarkers(false)));
 
 // Completed reports aren't loaded at login (keeps login fast). The first time
-// the Complete filter is switched on, fetch them; after that it's a local toggle.
+// the Complete filter is switched on, fetch them; after that it's a local
+// toggle. The date-range control shows only while the filter is on.
 $("f-complete").addEventListener("change", () => {
+  $("complete-range").classList.toggle("show", $("f-complete").checked);
   if ($("f-complete").checked && !completedLoaded) loadReports(false, false);
   else drawMarkers(false);
 });
+
+$("cr-mode").addEventListener("change", () => {
+  const custom = $("cr-mode").value === "custom";
+  $("cr-custom").classList.toggle("show", custom);
+  if (custom){
+    // Sensible starting window: the last 30 days.
+    const day = d => d.toISOString().slice(0, 10);
+    if (!$("cr-from").value) $("cr-from").value = day(new Date(Date.now() - 30 * 86400000));
+    if (!$("cr-to").value)   $("cr-to").value   = day(new Date());
+  }
+  drawMarkers(false);
+});
+$("cr-from").addEventListener("change", () => drawMarkers(false));
+$("cr-to").addEventListener("change", () => drawMarkers(false));
 
 /* ---------- Load ---------- */
 function setMapLoading(on){ $("map-loading").classList.toggle("show", !!on); }
@@ -771,7 +823,9 @@ function openDetail(r){
   } else {
     $("d-area").textContent = ""; $("d-area").onclick = null;
   }
-  $("d-date").textContent = r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "";
+  $("d-date").textContent = (r.timestamp ? ("Reported " + new Date(r.timestamp).toLocaleString()) : "") +
+    (r.status === "Complete" && r.closedAt ? (" · Closed " + new Date(r.closedAt).toLocaleDateString() +
+      (r.closedBy ? " by " + r.closedBy : "")) : "");
   $("d-eta").textContent = (r.eta && r.status !== "Complete")
     ? ("🗓 Estimated completion " + new Date(r.eta).toLocaleDateString()) : "";
   $("d-updreq").textContent = r.updateRequested
