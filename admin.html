@@ -449,6 +449,11 @@
       <label class="set-check"><input type="checkbox" id="set-updreq-optin">
         <span>Email me when someone requests an update on an issue</span></label>
     </div>
+    <div class="set-label">Test emails <span style="font-weight:400">(sent only to you)</span></div>
+    <div class="u-acts" style="margin-top:2px">
+      <button id="set-test-weekly" class="linkbtn" type="button">Email me the weekly report</button>
+      <button id="set-test-daily" class="linkbtn" type="button">Email me the daily digest</button>
+    </div>
     <div id="set-users-wrap" style="display:none;margin-top:16px">
       <button id="set-users-btn" class="btn-note" type="button">Manage users</button>
     </div>
@@ -1458,6 +1463,22 @@ $("set-save").addEventListener("click", async () => {
   $("settingsmodal").classList.remove("show");
   toast("Settings saved.");
 });
+
+/* Test sends: the report/digest as it stands right now, to the requester only. */
+async function testDigest(kind, btn){
+  btn.disabled = true;
+  let out;
+  try { out = await api({ action:"adminTestDigest", password:getPw(), kind:kind }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  btn.disabled = false;
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't send the test."); return;
+  }
+  toast("Sent to " + out.sentTo + ".");
+}
+$("set-test-weekly").addEventListener("click", e => testDigest("weekly", e.target));
+$("set-test-daily").addEventListener("click", e => testDigest("daily", e.target));
 
 /* ---------- Manage users (super users) ---------- */
 async function openUsers(){
