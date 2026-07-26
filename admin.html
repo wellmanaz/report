@@ -1382,6 +1382,8 @@ $("set-users-btn").addEventListener("click", openUsers);
 $("users-close").addEventListener("click", () => $("usersmodal").classList.remove("show"));
 $("usersmodal").addEventListener("click", e => { if (e.target === $("usersmodal")) $("usersmodal").classList.remove("show"); });
 
+let usersCache = null, editingUserRow = 0;
+
 async function refreshUsers(){
   let out;
   try { out = await api({ action:"adminListUsers", password:getPw() }); }
@@ -1390,13 +1392,20 @@ async function refreshUsers(){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return false; }
     toast(out.error || "Couldn't load users."); return false;
   }
+  usersCache = out;
   $("inv-position").innerHTML = (out.positions || [])
     .map(p => '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>').join("");
+  renderUsersList();
+  return true;
+}
+
+function renderUsersList(){
   const list = $("users-list");
   list.innerHTML = "";
-  (out.users || []).forEach(u => {
+  ((usersCache && usersCache.users) || []).forEach(u => {
     const div = document.createElement("div");
     div.className = "urow" + (u.status === "Disabled" ? " u-disabled" : "");
+    if (u.row === editingUserRow){ renderUserEdit(div, u); list.appendChild(div); return; }
     const main = document.createElement("div");
     main.className = "u-main";
     main.innerHTML = escapeHtml(u.name || "(unnamed)") +
@@ -1406,28 +1415,111 @@ async function refreshUsers(){
     const sub = document.createElement("div");
     sub.className = "u-sub";
     sub.textContent = (u.email || "no email") + " · digest: " + (u.digest || "None") +
-      " · urgent alerts: " + (u.urgentEligible ? "allowed" : "not allowed");
+      " · urgent alerts: " + (u.urgentEligible ? "allowed" : "not allowed") +
+      (u.categories ? " · sees: " + u.categories : "");
     const acts = document.createElement("div");
     acts.className = "u-acts";
-    const act = (label, op, confirmMsg) => {
+    const act = (label, fn, confirmMsg) => {
       const b = document.createElement("button");
       b.className = "linkbtn"; b.type = "button"; b.textContent = label;
       b.addEventListener("click", async () => {
         if (confirmMsg && !window.confirm(confirmMsg)) return;
-        await manageUser(u, op);
+        await fn();
       });
       acts.appendChild(b);
     };
-    if (u.status === "Disabled") act("Re-enable", "activate");
-    else if (!u.self) act("Deactivate", "deactivate", "Deactivate " + u.name + "? They won't be able to sign in.");
-    if (u.email) act(u.status === "Invited" ? "Resend invite" : "Reset password", "resetPassword",
+    act("Edit", async () => { editingUserRow = u.row; renderUsersList(); });
+    if (u.status === "Disabled") act("Re-enable", () => manageUser(u, "activate"));
+    else if (!u.self) act("Deactivate", () => manageUser(u, "deactivate"),
+      "Deactivate " + u.name + "? They won't be able to sign in.");
+    if (u.email) act(u.status === "Invited" ? "Resend invite" : "Reset password",
+      () => manageUser(u, "resetPassword"),
       u.status === "Invited" ? null : "Email " + u.name + " a link to set a new password?");
-    act(u.urgentEligible ? "Block urgent alerts" : "Allow urgent alerts",
-        u.urgentEligible ? "revokeUrgent" : "grantUrgent");
     div.appendChild(main); div.appendChild(sub); div.appendChild(acts);
     list.appendChild(div);
   });
-  return true;
+}
+
+/* Inline edit form — a super user can change ANY field of any user. Blank
+   "new password" leaves the password unchanged. */
+function renderUserEdit(div, u){
+  const positions = (usersCache && usersCache.positions) || [];
+  div.innerHTML =
+    '<div class="u-main">Editing ' + escapeHtml(u.name || "(unnamed)") + (u.self ? ' <span class="u-badge">· you</span>' : '') + '</div>' +
+    '<div class="set-label">Name</div><input type="text" id="ue-name">' +
+    '<div class="set-label">Stamp (shown on notes / Closed By)</div><input type="text" id="ue-stamp">' +
+    '<div class="set-label">Position</div><select id="ue-position">' +
+      positions.map(p => '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>').join("") + '</select>' +
+    '<div class="set-label">Email</div><input type="email" id="ue-email">' +
+    '<div class="set-label">Cell phone</div><input type="tel" id="ue-phone">' +
+    '<div class="set-hint">Optional — text updates coming soon</div>' +
+    '<div class="set-label">Report emails</div><select id="ue-digest">' +
+      '<option value="None">None</option><option value="Daily">Daily digest + weekly report</option>' +
+      '<option value="Weekly">Weekly report only (Fridays)</option></select>' +
+    '<label class="set-check"><input type="checkbox" id="ue-urg-eligible"><span>Allowed to receive urgent alerts</span></label>' +
+    '<label class="set-check"><input type="checkbox" id="ue-urg-optin"><span>Urgent alerts turned on</span></label>' +
+    '<div class="set-label">Urgent hours (between)</div>' +
+    '<div class="time-row"><input type="time" id="ue-urg-from"><span>and</span><input type="time" id="ue-urg-to"></div>' +
+    '<label class="set-check"><input type="checkbox" id="ue-updreq"><span>Email when an update is requested</span></label>' +
+    '<div class="set-label">Category filter (blank = sees everything)</div>' +
+    '<input type="text" id="ue-categories" placeholder="e.g. Landscaping, Lake">' +
+    '<div class="set-label">New password (blank = unchanged)</div>' +
+    '<input type="text" id="ue-password" autocomplete="off">' +
+    '<div class="modal-btns">' +
+      '<button id="ue-cancel" class="linkbtn" type="button">Cancel</button>' +
+      '<button id="ue-save" class="btn-note" type="button">Save</button></div>';
+
+  $("ue-name").value = u.name || "";
+  $("ue-stamp").value = u.stamp || "";
+  $("ue-position").value = u.position || "Vendor";
+  if (u.self) { $("ue-position").disabled = true; $("ue-position").title = "You can't change your own super-user role."; }
+  $("ue-email").value = u.email || "";
+  $("ue-phone").value = u.phone || "";
+  $("ue-digest").value = ["None","Daily","Weekly"].indexOf(u.digest) >= 0 ? u.digest : "None";
+  $("ue-urg-eligible").checked = !!u.urgentEligible;
+  $("ue-urg-optin").checked = !!u.urgentOptIn;
+  const hm = String(u.urgentHours || "").match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  $("ue-urg-from").value = hm ? padTime(hm[1]) : "07:00";
+  $("ue-urg-to").value   = hm ? padTime(hm[2]) : "21:00";
+  $("ue-updreq").checked = !!u.updateReqEmails;
+  $("ue-categories").value = u.categories || "";
+
+  $("ue-cancel").addEventListener("click", () => { editingUserRow = 0; renderUsersList(); });
+  $("ue-save").addEventListener("click", async () => {
+    const btn = $("ue-save"); btn.disabled = true;
+    const hours = ($("ue-urg-from").value && $("ue-urg-to").value)
+      ? ($("ue-urg-from").value + "-" + $("ue-urg-to").value) : "";
+    let out;
+    try {
+      out = await api({ action:"adminEditUser", password:getPw(), row:u.row, name:u.name, fields:{
+        name: $("ue-name").value.trim(),
+        stamp: $("ue-stamp").value.trim(),
+        position: $("ue-position").value,
+        email: $("ue-email").value.trim(),
+        phone: $("ue-phone").value.trim(),
+        digest: $("ue-digest").value,
+        urgentEligible: $("ue-urg-eligible").checked,
+        urgentOptIn: $("ue-urg-optin").checked,
+        urgentHours: hours,
+        updateReqEmails: $("ue-updreq").checked,
+        categories: $("ue-categories").value.trim(),
+        newPassword: $("ue-password").value.trim()
+      }});
+    } catch(e){ out = { ok:false, error:"Network error — not saved." }; }
+    btn.disabled = false;
+    if (!out || !out.ok){
+      if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+      toast((out && out.error) || "Couldn't save."); return;
+    }
+    editingUserRow = 0;
+    if (out.selfPasswordChanged){
+      // Their stored session password is now stale — re-login with the new one.
+      clearPw(); showLogin("Password changed — sign in with your new password.");
+      return;
+    }
+    toast("User updated.");
+    refreshUsers();
+  });
 }
 
 async function manageUser(u, op){
