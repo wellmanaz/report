@@ -72,6 +72,13 @@
   .legend label.row{cursor:pointer;}
   .legend input{margin:0;width:15px;height:15px;}
   .legend .always{color:var(--ink-soft);font-size:11px;}
+  /* Completed is a separate REVIEW MODE, not another layer: a divider sets it
+     apart, and while it's on the active-work filters grey out and the row
+     highlights green. */
+  .legend .divider{border-top:1px solid var(--line);margin:6px -10px 5px;}
+  .legend .row-complete{border-radius:8px;padding:3px 6px;margin:2px -6px;}
+  .legend.complete-mode .row-open,.legend.complete-mode .row-inproc{opacity:.4;}
+  .legend.complete-mode .row-complete{background:#E7F0E9;font-weight:700;color:#2F5E3F;}
   /* Completed-issues date range (shown while the Complete filter is on) */
   #complete-range{margin:4px 0 2px 21px;display:none;}
   #complete-range.show{display:block;}
@@ -347,9 +354,10 @@
   <div class="legend">
     <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
     <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
-    <label class="row"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
-    <label class="row"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
-    <label class="row"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Complete</label>
+    <label class="row row-open"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
+    <label class="row row-inproc"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
+    <div class="divider"></div>
+    <label class="row row-complete"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Completed <span class="always">only</span></label>
     <div id="complete-range">
       <select id="cr-mode">
         <option value="week" selected>Past week</option>
@@ -636,13 +644,15 @@ function completeInRange(r){
   return t >= from && t <= to;
 }
 
-/* Which reports to show, per the legend filter checkboxes. Urgent and
-   update-requested issues always show — a pending request stays on the map
-   no matter which status boxes are ticked, until an update is provided.
-   Completed issues additionally respect the date-range control. */
+/* Which reports to show. Completed is a mutually exclusive REVIEW MODE:
+   while it's on, the map shows completed issues (within the date range) and
+   nothing else. In the normal working view, urgent and update-requested
+   issues always show — a pending request stays on the map no matter which
+   boxes are ticked, until an update is provided. */
 function isVisible(r){
+  if ($("f-complete").checked) return r.status === "Complete" && completeInRange(r);
   if (r.urgent || r.updateRequested) return true;
-  if (r.status === "Complete")   return $("f-complete").checked && completeInRange(r);
+  if (r.status === "Complete")   return false;
   if (r.status === "In Process") return $("f-inproc").checked;
   return $("f-open").checked;                       // blank status = Open
 }
@@ -718,15 +728,38 @@ function drawMarkers(fit){
   if (fit && pts.length) { try { map.fitBounds(pts, { padding:[40,40], maxZoom:17 }); } catch(e){} }
 }
 
+/* Entering/leaving the completed review mode: swap the legend styling, the
+   date-range control, and the topbar title. */
+function setCompleteMode(on){
+  $("complete-range").classList.toggle("show", on);
+  document.querySelector(".legend").classList.toggle("complete-mode", on);
+  document.querySelector("#topbar .title").textContent = on ? "Completed issues" : "Open issues";
+}
+
 ["f-open", "f-inproc"].forEach(id =>
-  $(id).addEventListener("change", () => drawMarkers(false)));
+  $(id).addEventListener("change", () => {
+    // Ticking an active-work filter exits the completed review mode.
+    if ($(id).checked && $("f-complete").checked){
+      $("f-complete").checked = false;
+      setCompleteMode(false);
+    }
+    drawMarkers(false);
+  }));
 
 // Completed reports aren't loaded at login (keeps login fast). The first time
-// the Complete filter is switched on, fetch them; after that it's a local
-// toggle. The date-range control shows only while the filter is on.
+// the review mode is switched on, fetch them; after that it's a local toggle.
 $("f-complete").addEventListener("change", () => {
-  $("complete-range").classList.toggle("show", $("f-complete").checked);
-  if ($("f-complete").checked && !completedLoaded) loadReports(false, false);
+  const on = $("f-complete").checked;
+  if (on){
+    $("f-open").checked = false;
+    $("f-inproc").checked = false;
+  } else if (!$("f-open").checked && !$("f-inproc").checked){
+    // Leaving review mode with nothing selected -> back to the working view.
+    $("f-open").checked = true;
+    $("f-inproc").checked = true;
+  }
+  setCompleteMode(on);
+  if (on && !completedLoaded) loadReports(false, false);
   else drawMarkers(false);
 });
 
