@@ -276,6 +276,7 @@
     <div class="step-head">
       <div class="step-num">3</div>
       <h2>Type of issue</h2>
+      <span class="optional">required</span>
     </div>
     <select id="issue-type">
       <option value="" selected>Select a category…</option>
@@ -582,6 +583,9 @@ $("photo-remove").addEventListener("click", () => {
 function hasContent(){
   return !!(state.photoBase64 || $("description").value.trim());
 }
+function hasType(){
+  return !!$("issue-type").value;
+}
 function hasLocation(){
   return state.locSource === "asset" || (state.lat !== null && insideCommunity(state.lat, state.lng));
 }
@@ -589,17 +593,20 @@ function locationOutside(){
   return state.locSource !== "asset" && state.lat !== null && !insideCommunity(state.lat, state.lng);
 }
 function updateSubmit(){
-  const ok = hasContent() && hasLocation();
+  const ok = hasContent() && hasType() && hasLocation();
   $("submit-btn").disabled = !ok;
   $("submit-note").textContent = ok
     ? "Sends straight to the community manager."
     : !hasContent()
       ? "Add a photo or a description to send."
-      : locationOutside()
-        ? "The pin is outside Andersen Springs — move it to where the issue is."
-        : "Waiting for a location — allow location access or tap the map.";
+      : !hasType()
+        ? "Pick a type of issue to send."
+        : locationOutside()
+          ? "The pin is outside Andersen Springs — move it to where the issue is."
+          : "Waiting for a location — allow location access or tap the map.";
 }
 $("description").addEventListener("input", updateSubmit);
+$("issue-type").addEventListener("change", updateSubmit);
 
 function showError(msg){
   const box = $("error-box");
