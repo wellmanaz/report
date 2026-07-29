@@ -53,6 +53,8 @@
   #topbar .spacer{flex:1;}
   .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);}
   #signout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--ink);}
+  #cat-filter{background:#FDFCFA;border:1px solid var(--line);border-radius:8px;padding:6px 8px;
+    font-size:13px;color:var(--ink);font-family:inherit;max-width:150px;}
   #map-wrap{flex:1;position:relative;}
   #map{position:absolute;inset:0;}
   #map-loading{position:absolute;inset:0;z-index:450;display:none;
@@ -77,7 +79,7 @@
      highlights green. */
   .legend .divider{border-top:1px solid var(--line);margin:6px -10px 5px;}
   .legend .row-complete{border-radius:8px;padding:3px 6px;margin:2px -6px;}
-  .legend.complete-mode .row-open,.legend.complete-mode .row-inproc{opacity:.4;}
+  .legend.complete-mode .row-open,.legend.complete-mode .row-inproc,.legend.complete-mode .row-proposal{opacity:.4;}
   .legend.complete-mode .row-complete{background:#E7F0E9;font-weight:700;color:#2F5E3F;}
   /* Completed-issues date range (shown while the Complete filter is on) */
   #complete-range{margin:4px 0 2px 21px;display:none;}
@@ -307,6 +309,7 @@
   .btn-start{background:var(--inproc);}
   .btn-done{background:var(--accent);}
   .btn-reopen{background:none;border:1px solid var(--line)!important;color:var(--ink)!important;}
+  .btn-proposal{background:#2563EB;}
   .btn-request{background:none;border:1.5px solid #E11900!important;color:#E11900!important;}
   .updreq-line{color:#E11900;font-weight:600;}
   .dot.ring{background:#fff;border:3px solid #E11900;box-shadow:none;}
@@ -344,6 +347,13 @@
       <div class="who" id="who"></div>
     </div>
     <div class="spacer"></div>
+    <select id="cat-filter" title="Filter by category">
+      <option value="" selected>All categories</option>
+      <option value="Landscaping">Landscaping</option>
+      <option value="Lake">Lake</option>
+      <option value="General Maintenance">General Maintenance</option>
+      <option value="Other">Other</option>
+    </select>
     <button id="settings-btn" title="Notification settings" aria-label="Settings">⚙</button>
     <button id="signout">Sign out</button>
   </div>
@@ -356,6 +366,7 @@
     <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
     <label class="row row-open"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
     <label class="row row-inproc"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
+    <label class="row row-proposal"><input type="checkbox" id="f-proposal" checked><span class="dot" style="background:#2563EB"></span> Proposal for Review</label>
     <div class="divider"></div>
     <label class="row row-complete"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Completed <span class="always">only</span></label>
     <div id="complete-range">
@@ -512,6 +523,14 @@
       <p class="modal-label">Estimated completion date (required)</p>
       <input type="date" id="notemodal-eta">
     </div>
+    <div id="notemodal-reason-wrap" style="display:none">
+      <p class="modal-label">Resolution (required)</p>
+      <select id="notemodal-reason" style="margin-bottom:10px">
+        <option value="Resolved" selected>Resolved</option>
+        <option value="Proposal rejected">Proposal rejected</option>
+        <option value="Other">Other…</option>
+      </select>
+    </div>
     <textarea id="notemodal-input" maxlength="2000" placeholder="Type a note…"></textarea>
     <div class="modal-btns">
       <button id="notemodal-cancel" class="linkbtn" type="button">Cancel</button>
@@ -573,7 +592,8 @@ const isSuper    = () => !!(me && me.perms && me.perms.superUser);
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
-  : r.status === "In Process" ? "#E6A700" : "#C0653A";
+  : r.status === "In Process" ? "#E6A700"
+  : r.status === "Proposal for Review" ? "#2563EB" : "#C0653A";
 const getPw = () => sessionStorage.getItem(PW_KEY) || "";
 const setPw = v => sessionStorage.setItem(PW_KEY, v);
 const clearPw = () => sessionStorage.removeItem(PW_KEY);
@@ -657,10 +677,15 @@ function completeInRange(r){
    issues always show — a pending request stays on the map no matter which
    boxes are ticked, until an update is provided. */
 function isVisible(r){
+  // Category filter (topbar dropdown) applies to EVERYTHING, urgent included —
+  // it's an explicit choice, and "All categories" is the default.
+  const cf = $("cat-filter").value;
+  if (cf && r.issueType !== cf) return false;
   if ($("f-complete").checked) return r.status === "Complete" && completeInRange(r);
   if (r.urgent || r.updateRequested) return true;
   if (r.status === "Complete")   return false;
   if (r.status === "In Process") return $("f-inproc").checked;
+  if (r.status === "Proposal for Review") return $("f-proposal").checked;
   return $("f-open").checked;                       // blank status = Open
 }
 
@@ -679,12 +704,14 @@ function singleMarker(r){
 function aggStatus(members){
   if (members.every(m => m.status === "Complete")) return "Complete";
   if (members.some(m => m.status === "In Process")) return "In Process";
+  if (members.some(m => m.status === "Proposal for Review")) return "Proposal for Review";
   return "";   // open
 }
 function bundleColor(members){
   if (members.some(m => m.urgent)) return "#E11900";
   const s = aggStatus(members);
-  return s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
+  return s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700"
+       : s === "Proposal for Review" ? "#2563EB" : "#C0653A";
 }
 function bundlePrimary(members){
   return members.slice().sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))[0];
@@ -743,7 +770,9 @@ function setCompleteMode(on){
   document.querySelector("#topbar .title").textContent = on ? "Completed issues" : "Open issues";
 }
 
-["f-open", "f-inproc"].forEach(id =>
+$("cat-filter").addEventListener("change", () => drawMarkers(false));
+
+["f-open", "f-inproc", "f-proposal"].forEach(id =>
   $(id).addEventListener("change", () => {
     // Ticking an active-work filter exits the completed review mode.
     if ($(id).checked && $("f-complete").checked){
@@ -760,10 +789,12 @@ $("f-complete").addEventListener("change", () => {
   if (on){
     $("f-open").checked = false;
     $("f-inproc").checked = false;
-  } else if (!$("f-open").checked && !$("f-inproc").checked){
+    $("f-proposal").checked = false;
+  } else if (!$("f-open").checked && !$("f-inproc").checked && !$("f-proposal").checked){
     // Leaving review mode with nothing selected -> back to the working view.
     $("f-open").checked = true;
     $("f-inproc").checked = true;
+    $("f-proposal").checked = true;
   }
   setCompleteMode(on);
   if (on && !completedLoaded) loadReports(false, false);
@@ -880,6 +911,8 @@ function openDetail(r){
   if (canManage()){
     if (r.status !== "In Process" && r.status !== "Complete")
       actions.appendChild(mkBtn("Mark In Process", "btn-start", () => update("In Process")));
+    if (r.status !== "Proposal for Review" && r.status !== "Complete")
+      actions.appendChild(mkBtn("Proposal for Review", "btn-proposal", () => update("Proposal for Review")));
     if (r.status !== "Complete")
       actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
     if (r.status === "Complete")
@@ -981,32 +1014,58 @@ window.addEventListener("popstate", () => {
 
 /* Small in-app modal for status-update details. Resolves to { note, eta } or
    null if cancelled. Used instead of window.prompt so there's no browser
-   title/URL. opts: requireEta (date must be picked before Save), showNote
+   title/URL. opts: requireEta (date must be picked before Save), reason
+   (completion picker: Resolved / Proposal rejected / Other — free text
+   required only for Other; the resulting note is never empty), showNote
    (default true), initialNote (prefill the textarea). */
 function askUpdateInfo(message, opts){
   opts = opts || {};
   return new Promise(resolve => {
     const modal = $("notemodal"), input = $("notemodal-input");
     const etaWrap = $("notemodal-eta-wrap"), etaInput = $("notemodal-eta");
+    const reasonWrap = $("notemodal-reason-wrap"), reasonSel = $("notemodal-reason");
     const saveBtn = $("notemodal-save"), cancelBtn = $("notemodal-cancel");
     $("notemodal-msg").textContent = message;
     input.value = opts.initialNote || "";
-    input.style.display = opts.showNote === false ? "none" : "";
     etaWrap.style.display = opts.requireEta ? "block" : "none";
     etaInput.value = "";
     etaInput.min = new Date().toISOString().slice(0, 10);   // no past-dated estimates
+    reasonWrap.style.display = opts.reason ? "block" : "none";
+    reasonSel.value = "Resolved";
+    function syncNoteField(){
+      // Reason mode: the free-text box only appears for "Other".
+      if (opts.reason) input.style.display = reasonSel.value === "Other" ? "" : "none";
+      else input.style.display = opts.showNote === false ? "none" : "";
+      if (opts.reason && reasonSel.value === "Other"){
+        input.placeholder = "Describe the resolution…";
+        setTimeout(() => input.focus(), 50);
+      } else {
+        input.placeholder = "Type a note…";
+      }
+    }
+    syncNoteField();
     modal.classList.add("show");
-    setTimeout(() => (opts.requireEta ? etaInput : input).focus(), 50);
+    setTimeout(() => (opts.requireEta ? etaInput : (opts.reason ? reasonSel : input)).focus(), 50);
     function cleanup(){
       modal.classList.remove("show");
       saveBtn.removeEventListener("click", onSave);
       cancelBtn.removeEventListener("click", onCancel);
       modal.removeEventListener("click", onBackdrop);
       document.removeEventListener("keydown", onKey);
+      reasonSel.removeEventListener("change", syncNoteField);
+      input.placeholder = "Type a note…";
     }
     function onSave(){
       if (opts.requireEta && !etaInput.value){ toast("Pick an estimated completion date first."); return; }
-      const v = { note: input.value.trim(), eta: etaInput.value || "" };
+      let note = input.value.trim();
+      if (opts.reason){
+        if (reasonSel.value === "Other"){
+          if (!note){ toast("Describe the resolution first."); return; }
+        } else {
+          note = reasonSel.value;   // "Resolved" / "Proposal rejected"
+        }
+      }
+      const v = { note: note, eta: etaInput.value || "" };
       cleanup(); resolve(v);
     }
     function onCancel(){ cleanup(); resolve(null); }
@@ -1016,6 +1075,7 @@ function askUpdateInfo(message, opts){
     cancelBtn.addEventListener("click", onCancel);
     modal.addEventListener("click", onBackdrop);
     document.addEventListener("keydown", onKey);
+    reasonSel.addEventListener("change", syncNoteField);
   });
 }
 
@@ -1024,7 +1084,15 @@ async function update(newStatus){
   if (!current) return;
   let note = $("d-note").value.trim();
   let eta = "";
+  // "Not yet being worked": blank/Open or Proposal for Review — starting work
+  // from either requires an estimated completion date (server enforces too).
   const fromOpen = current.status !== "In Process" && current.status !== "Complete";
+  if (newStatus === "Complete"){
+    // Completing requires a resolution: Resolved / Proposal rejected / Other.
+    const info = await askUpdateInfo("Completing — how was this resolved?", { reason:true, initialNote: note });
+    if (info === null) return;             // cancelled — leave the status unchanged
+    note = info.note;
+  }
   if (newStatus === "In Process"){
     if (fromOpen){
       // Starting work on an open report: an estimated completion date is
@@ -1336,8 +1404,11 @@ function openBundleDetail(members){
   const allComplete = members.every(m => m.status === "Complete");
   const allInProc   = members.every(m => m.status === "In Process");
   if (canManage()){
+    const allProposal = members.every(m => m.status === "Proposal for Review");
     if (!allComplete && !allInProc)
       actions.appendChild(mkBtn("Mark all In Process", "btn-start", () => updateBundle(bundleId, "In Process")));
+    if (!allComplete && !allProposal)
+      actions.appendChild(mkBtn("All Proposal for Review", "btn-proposal", () => updateBundle(bundleId, "Proposal for Review")));
     if (!allComplete)
       actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
     if (allComplete)
@@ -1352,8 +1423,14 @@ function openBundleDetail(members){
 
 async function updateBundle(bundleId, newStatus){
   if (!bundleId) return;
-  const note = ($("b-note") && $("b-note").value.trim()) || "";
+  let note = ($("b-note") && $("b-note").value.trim()) || "";
   let eta = "";
+  if (newStatus === "Complete"){
+    // Completing requires a resolution: Resolved / Proposal rejected / Other.
+    const info = await askUpdateInfo("Completing this bundle — how was it resolved?", { reason:true, initialNote: note });
+    if (info === null) return;             // cancelled — leave the status unchanged
+    note = info.note;
+  }
   // Starting work on a bundle with any open member: estimated completion date
   // required (the bundle's note comes from its own textarea, so hide the note field).
   if (newStatus === "In Process" && currentBundle &&
