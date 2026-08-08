@@ -2018,9 +2018,12 @@ function openTreeDetail(t){
   const d = $("d-tree");
   d.style.display = "block";
   const e = escapeHtml;
+  const logCount = String(t.log || "").split("\n\n").map(s => s.trim()).filter(Boolean).length;
   d.innerHTML =
-    '<span class="health-pill" style="background:' + (TREE_COLORS[t.health] || "#6E6357") + '">' + e(t.health || "?") + '</span>' +
-    ' <span style="font-weight:700;font-size:17px">' + e(t.tag) + ' · ' + e(t.species || "Unknown species") + '</span>' +
+    '<span class="health-pill" id="dt-pill" title="Tap to log a health check" ' +
+      'style="background:' + (TREE_COLORS[t.health] || "#6E6357") + ';cursor:pointer">' + e(t.health || "?") + '</span>' +
+    ' <span id="dt-title" title="Tap to edit details" style="font-weight:700;font-size:17px;cursor:pointer">' +
+      e(t.tag) + ' · ' + e(t.species || "Unknown species") + ' <span class="loc-edit">✎</span></span>' +
     (t.photo ? '<img id="dt-photo" src="' + t.photo + '" alt="Tree photo" style="cursor:zoom-in">' : '') +
     '<p class="meta">Age: ' + e(t.age || "—") + '  ·  Trunk: ' + e(t.diameter ? t.diameter + '"' : "—") +
       '  ·  Irrigation: ' + e(t.irrigation || "—") + '  ·  Trimmed: ' + e(t.trimmed || "—") + '</p>' +
@@ -2028,14 +2031,27 @@ function openTreeDetail(t){
     '<p class="meta">Added ' + (t.addedAt ? new Date(t.addedAt).toLocaleDateString() : "—") +
       (t.addedBy ? ' by ' + e(t.addedBy) : '') + '</p>' +
     '<div class="actions" style="margin-top:10px">' +
-      '<button class="btn-start" id="dt-health" type="button">Log health check</button>' +
-      '<button class="btn-reopen" id="dt-edit" type="button">Edit details</button>' +
+      '<button class="btn-done" id="dt-edit" type="button">✎ Edit details</button>' +
       '<button class="btn-request" id="dt-issue" type="button">Report an issue for this tree</button>' +
+      '<button class="btn-start" id="dt-health" type="button">Log health check</button>' +
     '</div>' +
-    '<div class="notes-head">History</div><div class="notes-thread" id="dt-log"></div>' +
-    '<textarea id="dt-note" placeholder="Add an observation…"></textarea>' +
-    '<button id="dt-note-save" class="btn-note" type="button" style="margin-top:8px">Save note</button>';
+    '<div class="notes-head" id="dt-hist-toggle" style="cursor:pointer;user-select:none">' +
+      'History (<span id="dt-hist-count">' + logCount + '</span>) <span id="dt-hist-arrow">▸</span></div>' +
+    '<div id="dt-hist-body" style="display:none">' +
+      '<div class="notes-thread" id="dt-log"></div>' +
+      '<textarea id="dt-note" placeholder="Add an observation…"></textarea>' +
+      '<button id="dt-note-save" class="btn-note" type="button" style="margin-top:8px">Save note</button>' +
+    '</div>';
   if (t.photo) $("dt-photo").onclick = () => { if (t.photoFull) window.open(t.photoFull, "_blank", "noopener"); };
+  // The header itself is tappable — matches the instinct to tap what you want to change.
+  $("dt-title").addEventListener("click", () => openTreeEdit(t));
+  $("dt-pill").addEventListener("click", () => logHealthCheck(t));
+  $("dt-hist-toggle").addEventListener("click", () => {
+    const body = $("dt-hist-body");
+    const open = body.style.display !== "none";
+    body.style.display = open ? "none" : "block";
+    $("dt-hist-arrow").textContent = open ? "▸" : "▾";
+  });
   $("dt-loc").onclick = () => openMapView(t.lat, t.lng, t.tag, null, async (la, ln) => {
     let out;
     try { out = await api({ action:"treeMove", password:getPw(), id:t.id, lat:la, lng:ln }); }
@@ -2087,6 +2103,8 @@ async function saveTreeNote(t){
   t.log = out.log || t.log;
   $("dt-note").value = "";
   renderTreeLog(t.log);
+  const cnt = $("dt-hist-count");
+  if (cnt) cnt.textContent = String(t.log || "").split("\n\n").map(s => s.trim()).filter(Boolean).length;
   toast("Note added.");
 }
 
