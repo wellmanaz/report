@@ -1757,6 +1757,7 @@ $("set-test-daily").addEventListener("click", e => testDigest("daily", e.target)
 /* ---------- Manage users (super users) ---------- */
 async function openUsers(){
   $("settingsmodal").classList.remove("show");
+  editingUserRow = 0;   // never let a stale edit state block the panel
   const ok = await refreshUsers();
   if (ok) $("usersmodal").classList.add("show");
 }
@@ -1777,7 +1778,12 @@ async function refreshUsers(){
   usersCache = out;
   $("inv-position").innerHTML = (out.positions || [])
     .map(p => '<option value="' + escapeHtml(p) + '">' + escapeHtml(p) + '</option>').join("");
-  renderUsersList();
+  try { renderUsersList(); }
+  catch(e){
+    // A render bug must never lock the panel shut — recover to the plain list.
+    editingUserRow = 0;
+    try { renderUsersList(); } catch(e2){ toast("Couldn't draw the user list."); }
+  }
   return true;
 }
 
@@ -1787,7 +1793,14 @@ function renderUsersList(){
   ((usersCache && usersCache.users) || []).forEach(u => {
     const div = document.createElement("div");
     div.className = "urow" + (u.status === "Disabled" ? " u-disabled" : "");
-    if (u.row === editingUserRow){ renderUserEdit(div, u); list.appendChild(div); return; }
+    if (u.row === editingUserRow){
+      // Attach BEFORE building the form — the field prefill looks elements up
+      // by id, which only works once the node is in the document.
+      list.appendChild(div);
+      try { renderUserEdit(div, u); }
+      catch(e){ editingUserRow = 0; div.remove(); toast("Couldn't open the editor — try again."); }
+      return;
+    }
     const main = document.createElement("div");
     main.className = "u-main";
     main.innerHTML = escapeHtml(u.name || "(unnamed)") +
