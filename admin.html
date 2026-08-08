@@ -48,18 +48,20 @@
     flex:none;display:flex;align-items:center;gap:10px;
     padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line);
   }
-  #topbar .title{font-weight:700;font-size:15px;}
-  #topbar .who{font-size:12px;color:var(--ink-soft);}
+  /* Single-line topbar: [Issues ▾] — name … ⚙  (sign-out lives in settings) */
+  #topbar .who{font-size:13px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   #topbar .spacer{flex:1;}
-  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-soft);}
-  #signout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--ink);}
-  #cat-filter{background:#FDFCFA;border:1px solid var(--line);border-radius:8px;padding:6px 8px;
-    font-size:13px;color:var(--ink);font-family:inherit;max-width:150px;}
+  #view-select{
+    border:none;background:transparent;font-weight:700;font-size:16px;color:var(--ink);
+    font-family:inherit;padding:4px 20px 4px 0;flex:none;cursor:pointer;
+    appearance:none;-webkit-appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='11' height='7' viewBox='0 0 12 8'><path fill='%2326211A' d='M1 1l5 5 5-5'/></svg>");
+    background-repeat:no-repeat;background-position:right 2px center;
+  }
+  #cat-filter{width:100%;margin-bottom:5px;font-size:12px;font-family:inherit;padding:4px 6px;
+    border:1px solid var(--line);border-radius:7px;background:#FDFCFA;color:var(--ink);}
 
   /* ---- Trees mode ---- */
-  #mode-switch{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none;}
-  #mode-switch button{background:none;border:none;padding:7px 11px;font-size:13px;color:var(--ink-soft);font-weight:600;}
-  #mode-switch button.on{background:var(--accent);color:#fff;}
   #tree-add-btn{display:none;position:absolute;right:12px;bottom:24px;z-index:400;
     background:var(--accent);color:#fff;border:none;border-radius:999px;
     padding:14px 20px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.3);}
@@ -362,24 +364,13 @@
 <!-- APP -->
 <div id="app">
   <div id="topbar">
-    <div>
-      <div class="title">Open issues</div>
-      <div class="who" id="who"></div>
-    </div>
-    <div id="mode-switch">
-      <button id="mode-issues" class="on" type="button">Issues</button>
-      <button id="mode-trees" type="button">Trees</button>
-    </div>
-    <div class="spacer"></div>
-    <select id="cat-filter" title="Filter by category">
-      <option value="" selected>All categories</option>
-      <option value="Landscaping">Landscaping</option>
-      <option value="Lake">Lake</option>
-      <option value="General Maintenance">General Maintenance</option>
-      <option value="Other">Other</option>
+    <select id="view-select" aria-label="View">
+      <option value="issues" selected>Issues</option>
+      <option value="trees">Trees</option>
     </select>
-    <button id="settings-btn" title="Notification settings" aria-label="Settings">⚙</button>
-    <button id="signout">Sign out</button>
+    <div class="who" id="who"></div>
+    <div class="spacer"></div>
+    <button id="settings-btn" title="Settings" aria-label="Settings">⚙</button>
   </div>
   <div id="map-wrap">
     <div id="map"></div>
@@ -387,6 +378,13 @@
     <button id="tree-add-btn" type="button">🌳 Add tree</button>
   </div>
   <div class="legend" id="legend-issues">
+    <select id="cat-filter" title="Filter by category">
+      <option value="" selected>All categories</option>
+      <option value="Landscaping">Landscaping</option>
+      <option value="Lake">Lake</option>
+      <option value="General Maintenance">General Maintenance</option>
+      <option value="Other">Other</option>
+    </select>
     <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
     <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
     <label class="row row-open"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
@@ -541,6 +539,7 @@
       <button id="set-users-btn" class="btn-note" type="button">Manage users</button>
     </div>
     <div class="modal-btns">
+      <button id="signout" class="linkbtn" type="button" style="margin-right:auto;color:#C0392B">Sign out</button>
       <button id="set-cancel" class="linkbtn" type="button">Close</button>
       <button id="set-save" class="btn-note" type="button">Save</button>
     </div>
@@ -838,7 +837,6 @@ function drawMarkers(fit){
 function setCompleteMode(on){
   $("complete-range").classList.toggle("show", on);
   $("legend-issues").classList.toggle("complete-mode", on);
-  updateTitle();
 }
 
 $("cat-filter").addEventListener("change", () => drawMarkers(false));
@@ -924,7 +922,7 @@ async function loadReports(fromLogin, refit){
   vendorName = out.vendor || "";
   me = out.user || null;
   const whoName = (me && me.name) || vendorName;
-  $("who").textContent = whoName ? ("Signed in as " + whoName + (me && me.position ? " · " + me.position : "")) : "";
+  $("who").textContent = whoName ? ("— " + whoName) : "";
   allReports = out.reports || [];
   completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
   setMapLoading(false);
@@ -1882,23 +1880,16 @@ const addTreeState = { lat: null, lng: null, fileId: null, photo: null, ai: null
 const TREE_COLORS = { "Good":"#4A7C59", "Fair":"#E6A700", "Poor":"#E07B00",
                       "Dead":"#B22222", "Removed":"#9AA0A6" };
 
-function updateTitle(){
-  document.querySelector("#topbar .title").textContent =
-    mode === "trees" ? "Tree inventory"
-    : ($("f-complete").checked ? "Completed issues" : "Open issues");
-}
-
+/* Views are fully separate worlds: the Trees screen never shows issues or
+   the issue-status legend, and nothing tree-related appears in Issues. */
 function setMode(m){
   if (m === mode) return;
   mode = m;
   closeDetail();
-  $("mode-issues").classList.toggle("on", m === "issues");
-  $("mode-trees").classList.toggle("on", m === "trees");
-  $("cat-filter").style.display = m === "issues" ? "" : "none";
+  $("view-select").value = m;
   $("legend-issues").style.display = m === "issues" ? "" : "none";
   $("legend-trees").style.display = m === "trees" ? "" : "none";
   $("tree-add-btn").style.display = m === "trees" ? "block" : "none";
-  updateTitle();
   if (m === "trees"){
     if (!treesLoaded) loadTrees(true); else drawTrees(false);
   } else {
@@ -1906,8 +1897,7 @@ function setMode(m){
     else drawMarkers(false);
   }
 }
-$("mode-issues").addEventListener("click", () => setMode("issues"));
-$("mode-trees").addEventListener("click", () => setMode("trees"));
+$("view-select").addEventListener("change", e => setMode(e.target.value));
 
 async function loadTrees(fit){
   setMapLoading(true);
@@ -2171,20 +2161,48 @@ function compressImage(file, cb){
 
 function updateAddLoc(text){
   const el = $("ta-loc");
-  if (el) el.innerHTML = text + ' <span class="loc-edit">tap to adjust</span>';
+  if (el) el.textContent = text;
+}
+
+/* Inline mini-map in the add-tree sheet — same pattern as the resident form:
+   GPS drops the pin, drag (or tap the map) to fine-tune. */
+let taMap = null, taMarker = null;
+function initTaMap(center){
+  if (taMap){ try { taMap.remove(); } catch(e){} taMap = null; taMarker = null; }
+  taMap = L.map("ta-map").setView(center, 18);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(taMap);
+  taMap.on("click", e => setTaPin(e.latlng.lat, e.latlng.lng));
+  setTimeout(() => taMap.invalidateSize(), 120);
+}
+function setTaPin(la, ln){
+  addTreeState.lat = la; addTreeState.lng = ln;
+  if (!taMarker){
+    taMarker = L.marker([la, ln], { draggable: true }).addTo(taMap);
+    taMarker.on("dragend", () => {
+      const p = taMarker.getLatLng();
+      addTreeState.lat = p.lat; addTreeState.lng = p.lng;
+      updateAddLoc("📍 Pin set — drag to fine-tune");
+    });
+  } else taMarker.setLatLng([la, ln]);
+  updateAddLoc("📍 Pin set — drag to fine-tune");
 }
 
 function startAddTree(){
   addTreeState.lat = null; addTreeState.lng = null;
   addTreeState.fileId = null; addTreeState.photo = null; addTreeState.ai = null;
   openTreeAddSheet();
+  initTaMap(map ? map.getCenter() : NEIGHBORHOOD_CENTER);
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
-      p => { addTreeState.lat = p.coords.latitude; addTreeState.lng = p.coords.longitude;
-             updateAddLoc("📍 GPS captured"); },
-      () => updateAddLoc("⚠️ No GPS fix"),
+      p => {
+        taMap.setView([p.coords.latitude, p.coords.longitude], 19);
+        setTaPin(p.coords.latitude, p.coords.longitude);
+        updateAddLoc("📍 GPS captured — drag the pin if it's off");
+      },
+      () => updateAddLoc("⚠️ No GPS fix — tap the map to mark the tree"),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
-  } else updateAddLoc("⚠️ No GPS");
+  } else updateAddLoc("⚠️ No GPS — tap the map to mark the tree");
 }
 $("tree-add-btn").addEventListener("click", startAddTree);
 
@@ -2197,7 +2215,8 @@ function openTreeAddSheet(){
   d.style.display = "block";
   d.innerHTML =
     '<span class="pill" style="background:var(--accent)">New tree</span>' +
-    '<p class="meta" id="ta-loc" style="margin-top:8px">📍 Finding your location… <span class="loc-edit">tap to adjust</span></p>' +
+    '<p class="meta" id="ta-loc" style="margin-top:8px">📍 Finding your location…</p>' +
+    '<div id="ta-map" style="height:210px;border-radius:10px;border:1px solid var(--line);margin:8px 0"></div>' +
     '<input type="file" id="ta-file" accept="image/*" capture="environment" style="display:none">' +
     '<button type="button" class="photo-btn" id="ta-photo-btn" style="width:100%">📷&nbsp; Take tree photo *</button>' +
     '<div id="ta-preview-wrap" style="display:none"><img id="ta-preview" alt="Tree photo" style="width:100%;border-radius:12px"></div>' +
@@ -2212,23 +2231,9 @@ function openTreeAddSheet(){
     '</div>';
   $("ta-photo-btn").addEventListener("click", () => $("ta-file").click());
   $("ta-file").addEventListener("change", onAddTreePhoto);
-  $("ta-loc").addEventListener("click", adjustAddTreePin);
   $("ta-save").addEventListener("click", saveNewTree);
   $("ta-cancel").addEventListener("click", closeDetail);
   showSheet();
-}
-
-function adjustAddTreePin(){
-  const c = map.getCenter();
-  openMapView(
-    addTreeState.lat != null ? addTreeState.lat : c.lat,
-    addTreeState.lng != null ? addTreeState.lng : c.lng,
-    "New tree", null,
-    async (la, ln) => {
-      addTreeState.lat = la; addTreeState.lng = ln;
-      updateAddLoc("📍 Pin placed");
-      return true;
-    });
 }
 
 function onAddTreePhoto(e){
@@ -2278,7 +2283,7 @@ function onAddTreePhoto(e){
 
 async function saveNewTree(){
   if (!addTreeState.fileId){ toast("Add a photo first."); return; }
-  if (addTreeState.lat == null){ toast("Set the tree's location — tap the location line."); return; }
+  if (addTreeState.lat == null){ toast("Set the tree's location — tap the map to drop the pin."); return; }
   const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
   if (!species || !health || !age){ toast("Species, health, and age are required."); return; }
   const btn = $("ta-save"); btn.disabled = true;
