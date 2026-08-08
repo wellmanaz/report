@@ -201,6 +201,21 @@
   }
   #mapview-save:disabled{opacity:.6;cursor:default;}
   #mapview.editing #mapview-save{display:block;}
+  #mapview-gps{
+    display:none;position:absolute;top:64px;left:12px;z-index:801;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:10px 14px;font-size:14px;font-weight:650;font-family:inherit;color:var(--ink);
+    box-shadow:0 2px 10px rgba(0,0,0,.28);cursor:pointer;
+  }
+  #mapview.editing #mapview-gps{display:block;}
+  #mapview-gps:disabled{opacity:.6;}
+  .map-gps-btn{
+    position:absolute;top:8px;right:8px;z-index:500;
+    background:var(--card);border:1px solid var(--line);border-radius:9px;
+    padding:8px 11px;font-size:13px;font-weight:650;font-family:inherit;color:var(--ink);
+    box-shadow:0 1px 6px rgba(0,0,0,.22);cursor:pointer;
+  }
+  .map-gps-btn:disabled{opacity:.6;}
 
   /* Merge mode banner */
   #mergebar{
@@ -492,6 +507,7 @@
   <div id="mapview-map"></div>
   <button id="mapview-close" type="button">✕ Close map</button>
   <div id="mapview-edithint">Drag the pin to the correct spot, then Save.</div>
+  <button id="mapview-gps" type="button">📡 Precise update</button>
   <button id="mapview-save" type="button">Save location</button>
 </div>
 
@@ -1028,11 +1044,29 @@ function closeDetail(){
 }
 $("scrim").addEventListener("click", closeDetail);
 
+/* Non-interactive dots for OTHER trees, so a tree can be placed in relation
+   to its neighbors while editing a location. Returns the layer. */
+function addTreesUnderlay(targetMap, excludeId){
+  const layer = L.layerGroup();
+  trees.forEach(t => {
+    if (excludeId && t.id === excludeId) return;
+    if (t.health === "Removed") return;
+    L.circleMarker([t.lat, t.lng], {
+      radius: 6, fillColor: TREE_COLORS[t.health] || "#6E6357",
+      color: "#fff", weight: 1.5, fillOpacity: 0.85, interactive: false
+    }).addTo(layer);
+  });
+  layer.addTo(targetMap);
+  return layer;
+}
+
 /* Full-screen map view (opened from a location line or a No-Image placeholder).
    When editId is supplied, the pin is draggable and Save posts adminMove; when
    onSave (async fn) is supplied instead, Save calls it with the new lat/lng —
-   used by Trees mode. */
-function openMapView(lat, lng, title, editId, onSave){
+   used by Trees mode. treesExceptId (optional) draws the other trees as
+   context dots so a tree can be placed in relation to its neighbors. */
+let mapViewTreesLayer = null;
+function openMapView(lat, lng, title, editId, onSave, treesExceptId){
   lat = parseFloat(lat); lng = parseFloat(lng);
   if (!isFinite(lat) || !isFinite(lng)) return;
   const editing = !!editId || !!onSave;
@@ -1046,6 +1080,8 @@ function openMapView(lat, lng, title, editId, onSave){
   } else {
     mapView.setView([lat, lng], 18);
   }
+  if (mapViewTreesLayer){ try { mapView.removeLayer(mapViewTreesLayer); } catch(e){} mapViewTreesLayer = null; }
+  if (treesExceptId !== undefined) mapViewTreesLayer = addTreesUnderlay(mapView, treesExceptId);
   if (mapViewMarker) mapView.removeLayer(mapViewMarker);
   mapViewMarker = L.marker([lat, lng], { draggable: editing }).addTo(mapView);
   if (editing){
@@ -1089,6 +1125,28 @@ async function savePinLocation(){
   snack("Pin location updated.");
 }
 $("mapview-save").addEventListener("click", savePinLocation);
+
+/* "Precise update": walk up to the spot, tap, and the pin jumps to a fresh
+   GPS fix (still needs Save to persist). */
+$("mapview-gps").addEventListener("click", () => {
+  if (!pinEdit) return;
+  if (!navigator.geolocation){ toast("GPS isn't available on this device."); return; }
+  const btn = $("mapview-gps");
+  btn.disabled = true; btn.textContent = "📡 Locating…";
+  navigator.geolocation.getCurrentPosition(
+    p => {
+      btn.disabled = false; btn.textContent = "📡 Precise update";
+      pinEdit.lat = p.coords.latitude; pinEdit.lng = p.coords.longitude;
+      if (mapViewMarker) mapViewMarker.setLatLng([pinEdit.lat, pinEdit.lng]);
+      mapView.setView([pinEdit.lat, pinEdit.lng], 19);
+      snack("Pin moved to your location — tap Save to keep it.");
+    },
+    () => {
+      btn.disabled = false; btn.textContent = "📡 Precise update";
+      snack("Couldn't get a GPS fix — drag the pin instead.");
+    },
+    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+});
 
 function hideMapView(){ $("mapview").classList.remove("show"); $("mapview").classList.remove("editing"); pinEdit = null; }
 function closeMapView(){ if (history.state && history.state.mapview) history.back(); else hideMapView(); }
@@ -1988,7 +2046,7 @@ function openTreeDetail(t){
     drawTrees(false);
     snack("Tree location updated.");
     return true;
-  });
+  }, t.id);   // show the other trees so this one can be placed in relation
   $("dt-health").addEventListener("click", () => logHealthCheck(t));
   $("dt-edit").addEventListener("click", () => openTreeEdit(t));
   $("dt-issue").addEventListener("click", () => openTreeIssue(t));
@@ -2172,6 +2230,7 @@ function initTaMap(center){
   taMap = L.map("ta-map").setView(center, 18);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: "&copy; OpenStreetMap" }).addTo(taMap);
+  addTreesUnderlay(taMap, null);   // existing trees for placing in relation
   taMap.on("click", e => setTaPin(e.latlng.lat, e.latlng.lng));
   setTimeout(() => taMap.invalidateSize(), 120);
 }
@@ -2216,7 +2275,10 @@ function openTreeAddSheet(){
   d.innerHTML =
     '<span class="pill" style="background:var(--accent)">New tree</span>' +
     '<p class="meta" id="ta-loc" style="margin-top:8px">📍 Finding your location…</p>' +
-    '<div id="ta-map" style="height:210px;border-radius:10px;border:1px solid var(--line);margin:8px 0"></div>' +
+    '<div style="position:relative;margin:8px 0">' +
+      '<div id="ta-map" style="height:210px;border-radius:10px;border:1px solid var(--line)"></div>' +
+      '<button id="ta-gps" class="map-gps-btn" type="button">📡 Precise update</button>' +
+    '</div>' +
     '<input type="file" id="ta-file" accept="image/*" capture="environment" style="display:none">' +
     '<button type="button" class="photo-btn" id="ta-photo-btn" style="width:100%">📷&nbsp; Take tree photo *</button>' +
     '<div id="ta-preview-wrap" style="display:none"><img id="ta-preview" alt="Tree photo" style="width:100%;border-radius:12px"></div>' +
@@ -2233,6 +2295,24 @@ function openTreeAddSheet(){
   $("ta-file").addEventListener("change", onAddTreePhoto);
   $("ta-save").addEventListener("click", saveNewTree);
   $("ta-cancel").addEventListener("click", closeDetail);
+  // "Precise update": walk up to the tree and re-grab a fresh GPS fix.
+  $("ta-gps").addEventListener("click", () => {
+    if (!navigator.geolocation){ toast("GPS isn't available on this device."); return; }
+    const btn = $("ta-gps");
+    btn.disabled = true; btn.textContent = "📡 Locating…";
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        btn.disabled = false; btn.textContent = "📡 Precise update";
+        taMap.setView([p.coords.latitude, p.coords.longitude], 19);
+        setTaPin(p.coords.latitude, p.coords.longitude);
+        updateAddLoc("📍 GPS captured — drag the pin if it's off");
+      },
+      () => {
+        btn.disabled = false; btn.textContent = "📡 Precise update";
+        toast("Couldn't get a GPS fix — tap the map instead.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+  });
   showSheet();
 }
 
