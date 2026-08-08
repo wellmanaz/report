@@ -55,6 +55,26 @@
   #signout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--ink);}
   #cat-filter{background:#FDFCFA;border:1px solid var(--line);border-radius:8px;padding:6px 8px;
     font-size:13px;color:var(--ink);font-family:inherit;max-width:150px;}
+
+  /* ---- Trees mode ---- */
+  #mode-switch{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex:none;}
+  #mode-switch button{background:none;border:none;padding:7px 11px;font-size:13px;color:var(--ink-soft);font-weight:600;}
+  #mode-switch button.on{background:var(--accent);color:#fff;}
+  #tree-add-btn{display:none;position:absolute;right:12px;bottom:24px;z-index:400;
+    background:var(--accent);color:#fff;border:none;border-radius:999px;
+    padding:14px 20px;font-size:16px;font-weight:700;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  #legend-trees select{margin-top:5px;width:100%;font-size:12px;font-family:inherit;padding:4px 6px;
+    border:1px solid var(--line);border-radius:7px;background:#FDFCFA;color:var(--ink);}
+  .tree-form input[type=text],.tree-form input[type=date],.tree-form select{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;background:#FDFCFA;color:var(--ink);}
+  .photo-btn{border:1.5px dashed var(--line);border-radius:10px;background:none;
+    padding:14px 10px;font-size:14px;color:var(--ink-soft);font-family:inherit;cursor:pointer;margin:6px 0;}
+  .analyzing{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink-soft);margin:10px 0;}
+  .analyzing .ml-spinner{width:22px;height:22px;border-width:3px;}
+  .health-pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;color:#fff;}
+  .ai-note{background:#F1F5FE;border:1px solid #D5E0F7;border-radius:8px;padding:8px 10px;
+    font-size:13px;color:#2B4C8C;margin:8px 0;}
   #map-wrap{flex:1;position:relative;}
   #map{position:absolute;inset:0;}
   #map-loading{position:absolute;inset:0;z-index:450;display:none;
@@ -346,6 +366,10 @@
       <div class="title">Open issues</div>
       <div class="who" id="who"></div>
     </div>
+    <div id="mode-switch">
+      <button id="mode-issues" class="on" type="button">Issues</button>
+      <button id="mode-trees" type="button">Trees</button>
+    </div>
     <div class="spacer"></div>
     <select id="cat-filter" title="Filter by category">
       <option value="" selected>All categories</option>
@@ -359,9 +383,10 @@
   </div>
   <div id="map-wrap">
     <div id="map"></div>
-    <div id="map-loading"><div class="ml-spinner"></div><span>Loading issues…</span></div>
+    <div id="map-loading"><div class="ml-spinner"></div><span>Loading…</span></div>
+    <button id="tree-add-btn" type="button">🌳 Add tree</button>
   </div>
-  <div class="legend">
+  <div class="legend" id="legend-issues">
     <div class="row"><span class="dot pulse" style="background:#E11900"></span> Urgent <span class="always">always on</span></div>
     <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
     <label class="row row-open"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
@@ -379,6 +404,14 @@
         <input type="date" id="cr-from"><span>to</span><input type="date" id="cr-to">
       </div>
     </div>
+  </div>
+  <div class="legend" id="legend-trees" style="display:none">
+    <label class="row"><input type="checkbox" id="tf-good" checked><span class="dot" style="background:#4A7C59"></span> Good</label>
+    <label class="row"><input type="checkbox" id="tf-fair" checked><span class="dot" style="background:#E6A700"></span> Fair</label>
+    <label class="row"><input type="checkbox" id="tf-poor" checked><span class="dot" style="background:#E07B00"></span> Poor</label>
+    <label class="row"><input type="checkbox" id="tf-dead" checked><span class="dot" style="background:#B22222"></span> Dead</label>
+    <label class="row"><input type="checkbox" id="tf-removed"><span class="dot" style="background:#9AA0A6"></span> Removed</label>
+    <select id="tf-species"><option value="">All species</option></select>
   </div>
 </div>
 
@@ -416,6 +449,43 @@
     <div class="actions" id="d-actions"></div>
   </div>
   <div id="d-bundle" style="display:none"></div>
+  <div id="d-tree" style="display:none"></div>
+  <div id="d-tree-add" style="display:none"></div>
+</div>
+<datalist id="species-list"></datalist>
+
+<div id="healthmodal" class="modal">
+  <div class="modal-card">
+    <p>Log a health check</p>
+    <select id="hm-health">
+      <option>Good</option><option>Fair</option><option>Poor</option>
+      <option>Dead</option><option>Removed</option>
+    </select>
+    <textarea id="hm-note" maxlength="2000" placeholder="Observation (optional)…" style="margin-top:10px"></textarea>
+    <div class="modal-btns">
+      <button id="hm-cancel" class="linkbtn" type="button">Cancel</button>
+      <button id="hm-save" class="btn-note" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="treeissuemodal" class="modal">
+  <div class="modal-card">
+    <p>Report an issue for this tree</p>
+    <div class="set-label">Category</div>
+    <select id="ti-type">
+      <option value="Landscaping" selected>Landscaping</option>
+      <option value="Lake">Lake</option>
+      <option value="General Maintenance">General Maintenance</option>
+      <option value="Other">Other</option>
+    </select>
+    <div class="set-label">What's wrong?</div>
+    <textarea id="ti-desc" maxlength="1800" placeholder="Example: Large dead branch hanging over the sidewalk."></textarea>
+    <div class="modal-btns">
+      <button id="ti-cancel" class="linkbtn" type="button">Cancel</button>
+      <button id="ti-send" class="btn-note" type="button">File report</button>
+    </div>
+  </div>
 </div>
 
 <div id="snack"><span id="snack-msg"></span><button id="snack-undo">Undo</button></div>
@@ -725,6 +795,7 @@ function bundleIcon(members){
 }
 
 function drawMarkers(fit){
+  if (mode === "trees") return;   // tree markers own the layer in Trees mode
   markersLayer.clearLayers();
   const pts = [];
 
@@ -766,8 +837,8 @@ function drawMarkers(fit){
    date-range control, and the topbar title. */
 function setCompleteMode(on){
   $("complete-range").classList.toggle("show", on);
-  document.querySelector(".legend").classList.toggle("complete-mode", on);
-  document.querySelector("#topbar .title").textContent = on ? "Completed issues" : "Open issues";
+  $("legend-issues").classList.toggle("complete-mode", on);
+  updateTitle();
 }
 
 $("cat-filter").addEventListener("change", () => drawMarkers(false));
@@ -862,10 +933,12 @@ async function loadReports(fromLogin, refit){
 
 /* ---------- Detail sheet ---------- */
 function openDetail(r){
-  current = r; currentBundle = null;
+  current = r; currentBundle = null; currentTree = null;
   const hasCoords = isFinite(parseFloat(r.lat)) && isFinite(parseFloat(r.lng));
   $("d-single").style.display = "";
   $("d-bundle").style.display = "none";
+  $("d-tree").style.display = "none";
+  $("d-tree-add").style.display = "none";
   $("d-status").textContent = (r.urgent ? "⚠ " : "") + (r.status || "Open");
   $("d-status").style.background = colorFor(r);
   if (r.photo){
@@ -933,11 +1006,21 @@ function mkBtn(label, cls, fn){
   b.textContent = label; b.className = cls; b.addEventListener("click", fn);
   return b;
 }
+function showSheet(){
+  $("scrim").classList.add("show");
+  $("sheet").classList.add("show");
+  document.body.classList.add("sheet-open");   // hide the map zoom buttons behind the panel
+  if (!(history.state && history.state.detail)) history.pushState({ detail: true }, "");
+}
 function hideSheet(){
   $("scrim").classList.remove("show");
   $("sheet").classList.remove("show");
   document.body.classList.remove("sheet-open");   // restore the map zoom buttons
-  current = null; currentBundle = null;
+  current = null; currentBundle = null; currentTree = null;
+  $("d-tree").style.display = "none";
+  $("d-tree-add").style.display = "none";
+  $("d-single").style.display = "";
+  $("d-bundle").style.display = "none";
 }
 /* User-initiated close: pop our pushed history entry (which fires popstate ->
    hideSheet), so the back-stack stays in sync. */
@@ -948,13 +1031,14 @@ function closeDetail(){
 $("scrim").addEventListener("click", closeDetail);
 
 /* Full-screen map view (opened from a location line or a No-Image placeholder).
-   When editId is supplied, the pin is draggable and a Save button appears so the
-   manager can correct a report's location. */
-function openMapView(lat, lng, title, editId){
+   When editId is supplied, the pin is draggable and Save posts adminMove; when
+   onSave (async fn) is supplied instead, Save calls it with the new lat/lng —
+   used by Trees mode. */
+function openMapView(lat, lng, title, editId, onSave){
   lat = parseFloat(lat); lng = parseFloat(lng);
   if (!isFinite(lat) || !isFinite(lng)) return;
-  const editing = !!editId;
-  pinEdit = editing ? { id: editId, lat: lat, lng: lng } : null;
+  const editing = !!editId || !!onSave;
+  pinEdit = editing ? { id: editId || null, lat: lat, lng: lng, onSave: onSave || null } : null;
   $("mapview").classList.toggle("editing", editing);
   $("mapview").classList.add("show");
   if (!mapView){
@@ -984,6 +1068,12 @@ async function savePinLocation(){
   if (!pinEdit) return;
   const target = pinEdit;
   $("mapview-save").disabled = true;
+  if (target.onSave){
+    const ok = await target.onSave(target.lat, target.lng);
+    $("mapview-save").disabled = false;
+    if (ok !== false) closeMapView();
+    return;
+  }
   let out;
   try { out = await api({ action:"adminMove", password:getPw(), id:target.id, lat:target.lat, lng:target.lng }); }
   catch (e) { out = { ok:false, error:"Network error." }; }
@@ -1313,8 +1403,10 @@ function escapeHtml(s){
 }
 
 function openBundleDetail(members){
-  currentBundle = members; current = null;
+  currentBundle = members; current = null; currentTree = null;
   $("d-single").style.display = "none";
+  $("d-tree").style.display = "none";
+  $("d-tree-add").style.display = "none";
   const b = $("d-bundle");
   b.style.display = "block";
 
@@ -1782,6 +1874,449 @@ function snack(msg, undoId){
   };
 }
 function toast(msg){ snack(msg, null); }
+
+/* ================= Trees mode ================= */
+let mode = "issues", trees = [], treesLoaded = false, currentTree = null,
+    treeSpecies = [], issuesStale = false;
+const addTreeState = { lat: null, lng: null, fileId: null, photo: null, ai: null };
+const TREE_COLORS = { "Good":"#4A7C59", "Fair":"#E6A700", "Poor":"#E07B00",
+                      "Dead":"#B22222", "Removed":"#9AA0A6" };
+
+function updateTitle(){
+  document.querySelector("#topbar .title").textContent =
+    mode === "trees" ? "Tree inventory"
+    : ($("f-complete").checked ? "Completed issues" : "Open issues");
+}
+
+function setMode(m){
+  if (m === mode) return;
+  mode = m;
+  closeDetail();
+  $("mode-issues").classList.toggle("on", m === "issues");
+  $("mode-trees").classList.toggle("on", m === "trees");
+  $("cat-filter").style.display = m === "issues" ? "" : "none";
+  $("legend-issues").style.display = m === "issues" ? "" : "none";
+  $("legend-trees").style.display = m === "trees" ? "" : "none";
+  $("tree-add-btn").style.display = m === "trees" ? "block" : "none";
+  updateTitle();
+  if (m === "trees"){
+    if (!treesLoaded) loadTrees(true); else drawTrees(false);
+  } else {
+    if (issuesStale){ issuesStale = false; loadReports(false, false); }
+    else drawMarkers(false);
+  }
+}
+$("mode-issues").addEventListener("click", () => setMode("issues"));
+$("mode-trees").addEventListener("click", () => setMode("trees"));
+
+async function loadTrees(fit){
+  setMapLoading(true);
+  let out;
+  try { out = await api({ action:"treeList", password:getPw() }); }
+  catch(e){ setMapLoading(false); toast("Network error."); return; }
+  setMapLoading(false);
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't load trees."); return;
+  }
+  trees = out.trees || [];
+  treesLoaded = true;
+  refreshSpecies(out.species || []);
+  drawTrees(fit);
+}
+
+function refreshSpecies(list){
+  treeSpecies = list.slice();
+  const cur = $("tf-species").value;
+  $("tf-species").innerHTML = '<option value="">All species</option>' +
+    list.map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join("");
+  $("tf-species").value = list.indexOf(cur) >= 0 ? cur : "";
+  $("species-list").innerHTML = list.map(s => '<option value="' + escapeHtml(s) + '">').join("");
+}
+
+function treeVisible(t){
+  const box = { "Good":"tf-good", "Fair":"tf-fair", "Poor":"tf-poor",
+                "Dead":"tf-dead", "Removed":"tf-removed" }[t.health];
+  if (box && !$(box).checked) return false;
+  const sp = $("tf-species").value;
+  if (sp && t.species !== sp) return false;
+  return true;
+}
+
+function drawTrees(fit){
+  if (mode !== "trees") return;
+  markersLayer.clearLayers();
+  const pts = [];
+  trees.filter(treeVisible).forEach(t => {
+    const mk = L.circleMarker([t.lat, t.lng], {
+      radius: 8, fillColor: TREE_COLORS[t.health] || "#6E6357",
+      color: "#fff", weight: 2, fillOpacity: 0.95 });
+    mk.addTo(markersLayer);
+    mk.on("click", () => openTreeDetail(t));
+    pts.push([t.lat, t.lng]);
+  });
+  if (fit && pts.length){ try { map.fitBounds(pts, { padding:[40,40], maxZoom:18 }); } catch(e){} }
+}
+["tf-good","tf-fair","tf-poor","tf-dead","tf-removed"].forEach(id =>
+  $(id).addEventListener("change", () => drawTrees(false)));
+$("tf-species").addEventListener("change", () => drawTrees(false));
+
+/* ---------- Tree detail card ---------- */
+function openTreeDetail(t){
+  currentTree = t; current = null; currentBundle = null;
+  $("d-single").style.display = "none";
+  $("d-bundle").style.display = "none";
+  $("d-tree-add").style.display = "none";
+  const d = $("d-tree");
+  d.style.display = "block";
+  const e = escapeHtml;
+  d.innerHTML =
+    '<span class="health-pill" style="background:' + (TREE_COLORS[t.health] || "#6E6357") + '">' + e(t.health || "?") + '</span>' +
+    ' <span style="font-weight:700;font-size:17px">' + e(t.tag) + ' · ' + e(t.species || "Unknown species") + '</span>' +
+    (t.photo ? '<img id="dt-photo" src="' + t.photo + '" alt="Tree photo" style="cursor:zoom-in">' : '') +
+    '<p class="meta">Age: ' + e(t.age || "—") + '  ·  Trunk: ' + e(t.diameter ? t.diameter + '"' : "—") +
+      '  ·  Irrigation: ' + e(t.irrigation || "—") + '  ·  Trimmed: ' + e(t.trimmed || "—") + '</p>' +
+    '<p class="meta" id="dt-loc">📍 <span class="loc-link">' + e(t.area || "View on map") + '</span> <span class="loc-edit">tap to move pin</span></p>' +
+    '<p class="meta">Added ' + (t.addedAt ? new Date(t.addedAt).toLocaleDateString() : "—") +
+      (t.addedBy ? ' by ' + e(t.addedBy) : '') + '</p>' +
+    '<div class="actions" style="margin-top:10px">' +
+      '<button class="btn-start" id="dt-health" type="button">Log health check</button>' +
+      '<button class="btn-reopen" id="dt-edit" type="button">Edit details</button>' +
+      '<button class="btn-request" id="dt-issue" type="button">Report an issue for this tree</button>' +
+    '</div>' +
+    '<div class="notes-head">History</div><div class="notes-thread" id="dt-log"></div>' +
+    '<textarea id="dt-note" placeholder="Add an observation…"></textarea>' +
+    '<button id="dt-note-save" class="btn-note" type="button" style="margin-top:8px">Save note</button>';
+  if (t.photo) $("dt-photo").onclick = () => { if (t.photoFull) window.open(t.photoFull, "_blank", "noopener"); };
+  $("dt-loc").onclick = () => openMapView(t.lat, t.lng, t.tag, null, async (la, ln) => {
+    let out;
+    try { out = await api({ action:"treeMove", password:getPw(), id:t.id, lat:la, lng:ln }); }
+    catch(err){ out = { ok:false, error:"Network error." }; }
+    if (!out.ok){ snack(out.error || "Couldn't move the pin."); return false; }
+    t.lat = la; t.lng = ln;
+    if (typeof out.area === "string") t.area = out.area;
+    drawTrees(false);
+    snack("Tree location updated.");
+    return true;
+  });
+  $("dt-health").addEventListener("click", () => logHealthCheck(t));
+  $("dt-edit").addEventListener("click", () => openTreeEdit(t));
+  $("dt-issue").addEventListener("click", () => openTreeIssue(t));
+  $("dt-note-save").addEventListener("click", () => saveTreeNote(t));
+  renderTreeLog(t.log);
+  showSheet();
+}
+
+function renderTreeLog(raw){
+  const box = $("dt-log");
+  box.innerHTML = "";
+  const entries = String(raw || "").split("\n\n").map(s => s.trim()).filter(Boolean);
+  if (!entries.length){ box.innerHTML = '<div class="notes-empty">No history yet.</div>'; return; }
+  entries.forEach(en => {
+    const m = en.match(/^\[([^\]]*)\]\s?([\s\S]*)$/);
+    const div = document.createElement("div");
+    div.className = "note-item";
+    div.style.paddingRight = "11px";   // no edit pencil on history entries
+    if (m) div.innerHTML = '<div class="note-meta">' + escapeHtml(m[1]) + '</div>';
+    const b = document.createElement("div");
+    b.className = "note-body";
+    b.textContent = m ? m[2] : en;
+    div.appendChild(b);
+    box.appendChild(div);
+  });
+}
+
+async function saveTreeNote(t){
+  const text = $("dt-note").value.trim();
+  if (!text){ toast("Type a note first."); return; }
+  let out;
+  try { out = await api({ action:"treeAddNote", password:getPw(), id:t.id, note:text }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't save note."); return;
+  }
+  t.log = out.log || t.log;
+  $("dt-note").value = "";
+  renderTreeLog(t.log);
+  toast("Note added.");
+}
+
+function logHealthCheck(t){
+  $("hm-health").value = t.health || "Good";
+  $("hm-note").value = "";
+  $("healthmodal").classList.add("show");
+  $("hm-cancel").onclick = () => $("healthmodal").classList.remove("show");
+  $("hm-save").onclick = async () => {
+    $("healthmodal").classList.remove("show");
+    const newHealth = $("hm-health").value, note = $("hm-note").value.trim();
+    let out;
+    try { out = await api({ action:"treeUpdate", password:getPw(), id:t.id, fields:{
+      species:t.species, health:newHealth, age:t.age,
+      diameter:t.diameter, irrigation:t.irrigation, trimmed:t.trimmed } }); }
+    catch(e){ out = { ok:false, error:"Network error." }; }
+    if (!out.ok){ toast(out.error || "Couldn't save."); return; }
+    t.health = newHealth;
+    t.log = out.log || t.log;
+    if (note){
+      try { const o2 = await api({ action:"treeAddNote", password:getPw(), id:t.id, note:note });
+            if (o2.ok) t.log = o2.log; } catch(e){}
+    }
+    drawTrees(false);
+    openTreeDetail(t);
+    toast("Health check logged.");
+  };
+}
+
+/* Shared field set for add + edit ("Removed" only offered when editing). */
+function treeFormHtml(t){
+  const e = escapeHtml;
+  const healths = ["", "Good", "Fair", "Poor", "Dead"].concat(t.id ? ["Removed"] : []);
+  return '<div class="tree-form">' +
+    '<div class="set-label">Species *</div>' +
+    '<input type="text" id="tf-in-species" list="species-list" autocomplete="off" value="' + e(t.species || "") + '">' +
+    '<div class="set-label">Health *</div><select id="tf-in-health">' +
+      healths.map(h => '<option value="' + h + '"' + ((t.health || "") === h ? " selected" : "") + '>' + (h || "Select…") + '</option>').join("") +
+    '</select>' +
+    '<div class="set-label">Est. age or planted year *</div>' +
+    '<input type="text" id="tf-in-age" placeholder="~15 yrs / planted 2019" value="' + e(t.age || "") + '">' +
+    '<div class="set-label">Trunk diameter (in)</div>' +
+    '<input type="text" id="tf-in-diameter" inputmode="decimal" value="' + e(t.diameter || "") + '">' +
+    '<div class="set-label">Irrigation</div><select id="tf-in-irrigation">' +
+      ["", "Yes", "No", "Unknown"].map(o => '<option value="' + o + '"' + ((t.irrigation || "") === o ? " selected" : "") + '>' + (o || "—") + '</option>').join("") +
+    '</select>' +
+    '<div class="set-label">Last trimmed</div>' +
+    '<input type="date" id="tf-in-trimmed" value="' + e(t.trimmed || "") + '">' +
+  '</div>';
+}
+
+function openTreeEdit(t){
+  const d = $("d-tree");
+  d.innerHTML =
+    '<span class="pill" style="background:var(--accent-deep)">Editing ' + escapeHtml(t.tag) + '</span>' +
+    treeFormHtml(t) +
+    '<div class="actions"><button class="btn-done" id="te-save" type="button">Save changes</button>' +
+    '<button class="btn-reopen" id="te-cancel" type="button">Cancel</button></div>';
+  $("te-cancel").addEventListener("click", () => openTreeDetail(t));
+  $("te-save").addEventListener("click", async () => {
+    const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
+    if (!species || !health || !age){ toast("Species, health, and age are required."); return; }
+    const btn = $("te-save"); btn.disabled = true;
+    let out;
+    try { out = await api({ action:"treeUpdate", password:getPw(), id:t.id, fields:{
+      species:species, health:health, age:age,
+      diameter:$("tf-in-diameter").value.trim(),
+      irrigation:$("tf-in-irrigation").value,
+      trimmed:$("tf-in-trimmed").value } }); }
+    catch(e){ out = { ok:false, error:"Network error — not saved." }; }
+    btn.disabled = false;
+    if (!out.ok){
+      if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+      toast(out.error || "Couldn't save."); return;
+    }
+    t.species = species; t.health = health; t.age = age;
+    t.diameter = $("tf-in-diameter").value.trim();
+    t.irrigation = $("tf-in-irrigation").value;
+    t.trimmed = $("tf-in-trimmed").value;
+    t.log = out.log || t.log;
+    if (species && treeSpecies.indexOf(species) < 0){
+      treeSpecies.push(species); treeSpecies.sort(); refreshSpecies(treeSpecies);
+    }
+    drawTrees(false);
+    openTreeDetail(t);
+    toast("Tree updated.");
+  });
+}
+
+function openTreeIssue(t){
+  $("ti-desc").value = "";
+  $("ti-type").value = "Landscaping";
+  $("treeissuemodal").classList.add("show");
+  $("ti-cancel").onclick = () => $("treeissuemodal").classList.remove("show");
+  $("ti-send").onclick = async () => {
+    const desc = $("ti-desc").value.trim();
+    if (!desc){ toast("Describe the issue first."); return; }
+    $("ti-send").disabled = true;
+    let out;
+    try { out = await api({ action:"treeReportIssue", password:getPw(), id:t.id, description:desc, issueType:$("ti-type").value }); }
+    catch(e){ out = { ok:false, error:"Network error." }; }
+    $("ti-send").disabled = false;
+    if (!out.ok){ toast(out.error || "Couldn't file the report."); return; }
+    $("treeissuemodal").classList.remove("show");
+    issuesStale = true;   // Issues mode refetches on next switch
+    toast("Report filed — it's now in the Issues view.");
+  };
+}
+
+/* ---------- Add-tree flow (GPS + photo + AI prefill) ---------- */
+function compressImage(file, cb){
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const MAX = 1280;
+    let w = img.width, h = img.height;
+    if (Math.max(w, h) > MAX){
+      const s = MAX / Math.max(w, h);
+      w = Math.round(w * s); h = Math.round(h * s);
+    }
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    c.getContext("2d").drawImage(img, 0, 0, w, h);
+    URL.revokeObjectURL(url);
+    cb(c.toDataURL("image/jpeg", 0.75));
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); cb(null); };
+  img.src = url;
+}
+
+function updateAddLoc(text){
+  const el = $("ta-loc");
+  if (el) el.innerHTML = text + ' <span class="loc-edit">tap to adjust</span>';
+}
+
+function startAddTree(){
+  addTreeState.lat = null; addTreeState.lng = null;
+  addTreeState.fileId = null; addTreeState.photo = null; addTreeState.ai = null;
+  openTreeAddSheet();
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(
+      p => { addTreeState.lat = p.coords.latitude; addTreeState.lng = p.coords.longitude;
+             updateAddLoc("📍 GPS captured"); },
+      () => updateAddLoc("⚠️ No GPS fix"),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+  } else updateAddLoc("⚠️ No GPS");
+}
+$("tree-add-btn").addEventListener("click", startAddTree);
+
+function openTreeAddSheet(){
+  currentTree = null; current = null; currentBundle = null;
+  $("d-single").style.display = "none";
+  $("d-bundle").style.display = "none";
+  $("d-tree").style.display = "none";
+  const d = $("d-tree-add");
+  d.style.display = "block";
+  d.innerHTML =
+    '<span class="pill" style="background:var(--accent)">New tree</span>' +
+    '<p class="meta" id="ta-loc" style="margin-top:8px">📍 Finding your location… <span class="loc-edit">tap to adjust</span></p>' +
+    '<input type="file" id="ta-file" accept="image/*" capture="environment" style="display:none">' +
+    '<button type="button" class="photo-btn" id="ta-photo-btn" style="width:100%">📷&nbsp; Take tree photo *</button>' +
+    '<div id="ta-preview-wrap" style="display:none"><img id="ta-preview" alt="Tree photo" style="width:100%;border-radius:12px"></div>' +
+    '<div id="ta-analyzing" class="analyzing" style="display:none"><div class="ml-spinner"></div><span>Analyzing photo…</span></div>' +
+    '<div class="ai-note" id="ta-ai-note" style="display:none"></div>' +
+    treeFormHtml({}) +
+    '<div class="set-label" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--ink-soft)">Notes</div>' +
+    '<textarea id="tf-in-notes" maxlength="2000" placeholder="Anything worth recording…"></textarea>' +
+    '<div class="actions">' +
+      '<button class="btn-done" id="ta-save" type="button">Save tree</button>' +
+      '<button class="btn-reopen" id="ta-cancel" type="button">Cancel</button>' +
+    '</div>';
+  $("ta-photo-btn").addEventListener("click", () => $("ta-file").click());
+  $("ta-file").addEventListener("change", onAddTreePhoto);
+  $("ta-loc").addEventListener("click", adjustAddTreePin);
+  $("ta-save").addEventListener("click", saveNewTree);
+  $("ta-cancel").addEventListener("click", closeDetail);
+  showSheet();
+}
+
+function adjustAddTreePin(){
+  const c = map.getCenter();
+  openMapView(
+    addTreeState.lat != null ? addTreeState.lat : c.lat,
+    addTreeState.lng != null ? addTreeState.lng : c.lng,
+    "New tree", null,
+    async (la, ln) => {
+      addTreeState.lat = la; addTreeState.lng = ln;
+      updateAddLoc("📍 Pin placed");
+      return true;
+    });
+}
+
+function onAddTreePhoto(e){
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  compressImage(file, async dataUrl => {
+    if (!dataUrl){ toast("Couldn't read that image."); return; }
+    addTreeState.photo = dataUrl;
+    addTreeState.fileId = null;
+    $("ta-preview").src = dataUrl;
+    $("ta-preview-wrap").style.display = "block";
+    $("ta-photo-btn").textContent = "📷 Retake photo";
+    $("ta-analyzing").style.display = "flex";
+    $("ta-ai-note").style.display = "none";
+    let out;
+    try { out = await api({ action:"treeAnalyze", password:getPw(), photo:dataUrl }); }
+    catch(err){ out = { ok:false, error:"Network error." }; }
+    $("ta-analyzing").style.display = "none";
+    if (!out || !out.ok){
+      if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+      toast((out && out.error) || "Upload failed — try again.");
+      $("ta-photo-btn").textContent = "📷 Take tree photo *";
+      $("ta-preview-wrap").style.display = "none";
+      addTreeState.photo = null;
+      return;
+    }
+    addTreeState.fileId = out.fileId;
+    const s = out.suggestions;
+    if (s){
+      if (s.species && !$("tf-in-species").value) $("tf-in-species").value = s.species;
+      if (s.health) $("tf-in-health").value = s.health;
+      if (s.est_age && !$("tf-in-age").value) $("tf-in-age").value = s.est_age;
+      if (s.trunk_diameter_in && !$("tf-in-diameter").value) $("tf-in-diameter").value = String(s.trunk_diameter_in);
+      if (s.notes && !$("tf-in-notes").value) $("tf-in-notes").value = s.notes;
+      const conf = (s.species_confidence != null) ? Math.round(s.species_confidence * 100) + "%" : "";
+      addTreeState.ai = [s.species + (conf ? " (" + conf + ")" : ""), s.health, s.est_age].filter(Boolean).join(", ");
+      $("ta-ai-note").textContent = "🤖 AI suggestion — please verify: " + addTreeState.ai +
+        (s.health_reason ? " · " + s.health_reason : "");
+      $("ta-ai-note").style.display = "block";
+    } else {
+      addTreeState.ai = null;
+      $("ta-ai-note").textContent = "AI couldn't analyze this photo — fill the fields in manually.";
+      $("ta-ai-note").style.display = "block";
+    }
+  });
+}
+
+async function saveNewTree(){
+  if (!addTreeState.fileId){ toast("Add a photo first."); return; }
+  if (addTreeState.lat == null){ toast("Set the tree's location — tap the location line."); return; }
+  const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
+  if (!species || !health || !age){ toast("Species, health, and age are required."); return; }
+  const btn = $("ta-save"); btn.disabled = true;
+  let out;
+  try { out = await api({ action:"treeAdd", password:getPw(),
+    fileId: addTreeState.fileId, species: species, health: health, age: age,
+    diameter: $("tf-in-diameter").value.trim(),
+    irrigation: $("tf-in-irrigation").value,
+    trimmed: $("tf-in-trimmed").value,
+    notes: $("tf-in-notes").value.trim(),
+    lat: addTreeState.lat, lng: addTreeState.lng,
+    ai: addTreeState.ai || "" }); }
+  catch(e){ out = { ok:false, error:"Network error — not saved." }; }
+  btn.disabled = false;
+  if (!out.ok){
+    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast(out.error || "Couldn't save."); return;
+  }
+  trees.push(out.tree);
+  if (out.tree.species && treeSpecies.indexOf(out.tree.species) < 0){
+    treeSpecies.push(out.tree.species); treeSpecies.sort(); refreshSpecies(treeSpecies);
+  }
+  drawTrees(false);
+  const d = $("d-tree-add");
+  d.innerHTML =
+    '<div style="text-align:center;padding:26px 8px">' +
+      '<div style="font-size:40px">🌳</div>' +
+      '<h3 style="margin:8px 0 4px">' + escapeHtml(out.tree.tag) + ' saved</h3>' +
+      '<p class="meta">' + escapeHtml(out.tree.species) + ' · ' + escapeHtml(out.tree.health) +
+        (out.tree.area ? ' · ' + escapeHtml(out.tree.area) : '') + '</p>' +
+      '<div class="actions" style="margin-top:18px">' +
+        '<button class="btn-done" id="ta-another" type="button">Add another tree</button>' +
+        '<button class="btn-reopen" id="ta-done" type="button">Done</button>' +
+      '</div>' +
+    '</div>';
+  $("ta-another").addEventListener("click", startAddTree);
+  $("ta-done").addEventListener("click", closeDetail);
+}
 
 /* ---------- 5 taps on the login screen (dead space) -> back to main ---------- */
 (function(){
