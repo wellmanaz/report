@@ -76,6 +76,9 @@
   .analyzing{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink-soft);margin:10px 0;}
   .analyzing .ml-spinner{width:22px;height:22px;border-width:3px;}
   .health-pill{display:inline-block;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;color:#fff;}
+  .tree-dot-marker{background:transparent!important;border:0!important;}
+  .tree-dot{width:16px;height:16px;border-radius:50%;border:2px solid #fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,.2);cursor:grab;}
   .ai-note{background:#F1F5FE;border:1px solid #D5E0F7;border-radius:8px;padding:8px 10px;
     font-size:13px;color:#2B4C8C;margin:8px 0;}
   #map-wrap{flex:1;position:relative;}
@@ -421,6 +424,7 @@
     </div>
   </div>
   <div class="legend" id="legend-trees" style="display:none">
+    <label class="row"><input type="checkbox" id="tf-unassessed" checked><span class="dot" style="background:#6E6357"></span> Unassessed</label>
     <label class="row"><input type="checkbox" id="tf-good" checked><span class="dot" style="background:#4A7C59"></span> Good</label>
     <label class="row"><input type="checkbox" id="tf-fair" checked><span class="dot" style="background:#E6A700"></span> Fair</label>
     <label class="row"><input type="checkbox" id="tf-poor" checked><span class="dot" style="background:#E07B00"></span> Poor</label>
@@ -2042,8 +2046,10 @@ function refreshSpecies(list){
 }
 
 function treeVisible(t){
-  const box = { "Good":"tf-good", "Fair":"tf-fair", "Poor":"tf-poor",
-                "Dead":"tf-dead", "Removed":"tf-removed" }[t.health];
+  const box = t.health
+    ? { "Good":"tf-good", "Fair":"tf-fair", "Poor":"tf-poor",
+        "Dead":"tf-dead", "Removed":"tf-removed" }[t.health]
+    : "tf-unassessed";   // blank health = mapped but not yet evaluated
   if (box && !$(box).checked) return false;
   const sp = $("tf-species").value;
   if (sp && t.species !== sp) return false;
@@ -2054,17 +2060,41 @@ function drawTrees(fit){
   if (mode !== "trees") return;
   markersLayer.clearLayers();
   const pts = [];
+  // Computer only: pins are directly draggable to adjust a location without
+  // opening the card. Touch devices keep tap-only markers (no accidental moves).
+  const desktopDrag = window.matchMedia("(pointer: fine)").matches;
   trees.filter(treeVisible).forEach(t => {
-    const mk = L.circleMarker([t.lat, t.lng], {
-      radius: 8, fillColor: TREE_COLORS[t.health] || "#6E6357",
-      color: "#fff", weight: 2, fillOpacity: 0.95 });
+    let mk;
+    if (desktopDrag){
+      mk = L.marker([t.lat, t.lng], { draggable: true, icon: L.divIcon({
+        className: "tree-dot-marker",
+        html: '<div class="tree-dot" style="background:' + (TREE_COLORS[t.health] || "#6E6357") + '"></div>',
+        iconSize: [16, 16], iconAnchor: [8, 8] }) });
+      mk.on("dragend", async () => {
+        const p = mk.getLatLng();
+        let out;
+        try { out = await api({ action:"treeMove", password:getPw(), id:t.id, lat:p.lat, lng:p.lng }); }
+        catch(e){ out = { ok:false, error:"Network error." }; }
+        if (!out.ok){
+          mk.setLatLng([t.lat, t.lng]);   // snap back
+          toast(out.error || ("Couldn't move " + t.tag + ".")); return;
+        }
+        t.lat = p.lat; t.lng = p.lng;
+        if (typeof out.area === "string") t.area = out.area;
+        toast(t.tag + " moved" + (t.area ? " · " + t.area : "") + ".");
+      });
+    } else {
+      mk = L.circleMarker([t.lat, t.lng], {
+        radius: 8, fillColor: TREE_COLORS[t.health] || "#6E6357",
+        color: "#fff", weight: 2, fillOpacity: 0.95 });
+    }
     mk.addTo(markersLayer);
     mk.on("click", () => openTreeDetail(t));
     pts.push([t.lat, t.lng]);
   });
   if (fit && pts.length){ try { map.fitBounds(pts, { padding:[40,40], maxZoom:18 }); } catch(e){} }
 }
-["tf-good","tf-fair","tf-poor","tf-dead","tf-removed"].forEach(id =>
+["tf-unassessed","tf-good","tf-fair","tf-poor","tf-dead","tf-removed"].forEach(id =>
   $(id).addEventListener("change", () => drawTrees(false)));
 $("tf-species").addEventListener("change", () => drawTrees(false));
 
@@ -2080,7 +2110,7 @@ function openTreeDetail(t){
   const logCount = String(t.log || "").split("\n\n").map(s => s.trim()).filter(Boolean).length;
   d.innerHTML =
     '<span class="health-pill" id="dt-pill" title="Tap to log a health check" ' +
-      'style="background:' + (TREE_COLORS[t.health] || "#6E6357") + ';cursor:pointer">' + e(t.health || "?") + '</span>' +
+      'style="background:' + (TREE_COLORS[t.health] || "#6E6357") + ';cursor:pointer">' + e(t.health || "Unassessed") + '</span>' +
     ' <span id="dt-title" title="Tap to edit details" style="font-weight:700;font-size:17px;cursor:pointer">' +
       e(t.tag) + ' · ' + e(t.species || "Unknown species") + ' <span class="loc-edit">✎</span></span>' +
     (t.photo ? '<img id="dt-photo" src="' + t.photo + '" alt="Tree photo" style="cursor:zoom-in">' : '') +
@@ -2091,6 +2121,7 @@ function openTreeDetail(t){
       (t.addedBy ? ' by ' + e(t.addedBy) : '') + '</p>' +
     '<div class="actions" style="margin-top:10px">' +
       '<button class="btn-done" id="dt-edit" type="button">✎ Edit details</button>' +
+      '<button class="btn-proposal" id="dt-ai" type="button">🤖 AI evaluate</button>' +
       '<button class="btn-request" id="dt-issue" type="button">Report an issue for this tree</button>' +
       '<button class="btn-start" id="dt-health" type="button">Log health check</button>' +
     '</div>' +
@@ -2124,6 +2155,7 @@ function openTreeDetail(t){
   }, t.id);   // show the other trees so this one can be placed in relation
   $("dt-health").addEventListener("click", () => logHealthCheck(t));
   $("dt-edit").addEventListener("click", () => openTreeEdit(t));
+  $("dt-ai").addEventListener("click", ev => aiEvaluate(t, ev.target));
   $("dt-issue").addEventListener("click", () => openTreeIssue(t));
   $("dt-note-save").addEventListener("click", () => saveTreeNote(t));
   renderTreeLog(t.log);
@@ -2147,6 +2179,30 @@ function renderTreeLog(raw){
     div.appendChild(b);
     box.appendChild(div);
   });
+}
+
+/* Manual AI evaluation of one tree — fills only fields still blank, so
+   human-entered values are never overwritten. */
+async function aiEvaluate(t, btn){
+  btn.disabled = true; btn.textContent = "🤖 Evaluating…";
+  let out;
+  try { out = await api({ action:"treeEvaluate", password:getPw(), id:t.id }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  if (!out || !out.ok){
+    btn.disabled = false; btn.textContent = "🤖 AI evaluate";
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't evaluate."); return;
+  }
+  t.species = out.species; t.health = out.health;
+  t.age = out.age; t.diameter = out.diameter; t.log = out.log;
+  if (t.species && treeSpecies.indexOf(t.species) < 0){
+    treeSpecies.push(t.species); treeSpecies.sort(); refreshSpecies(treeSpecies);
+  }
+  drawTrees(false);
+  openTreeDetail(t);
+  toast(out.applied && out.applied.length
+    ? "AI filled: " + out.applied.join(", ") + " — review and correct as needed."
+    : "AI evaluation logged in history (all fields were already filled).");
 }
 
 async function saveTreeNote(t){
@@ -2193,17 +2249,18 @@ function logHealthCheck(t){
   };
 }
 
-/* Shared field set for add + edit ("Removed" only offered when editing). */
+/* Shared field set for add + edit — ALL optional ("Removed" only offered when
+   editing). Blank fields can be filled by the AI evaluation later. */
 function treeFormHtml(t){
   const e = escapeHtml;
   const healths = ["", "Good", "Fair", "Poor", "Dead"].concat(t.id ? ["Removed"] : []);
   return '<div class="tree-form">' +
-    '<div class="set-label">Species *</div>' +
+    '<div class="set-label">Species</div>' +
     '<input type="text" id="tf-in-species" list="species-list" autocomplete="off" value="' + e(t.species || "") + '">' +
-    '<div class="set-label">Health *</div><select id="tf-in-health">' +
-      healths.map(h => '<option value="' + h + '"' + ((t.health || "") === h ? " selected" : "") + '>' + (h || "Select…") + '</option>').join("") +
+    '<div class="set-label">Health</div><select id="tf-in-health">' +
+      healths.map(h => '<option value="' + h + '"' + ((t.health || "") === h ? " selected" : "") + '>' + (h || "— not evaluated —") + '</option>').join("") +
     '</select>' +
-    '<div class="set-label">Est. age or planted year *</div>' +
+    '<div class="set-label">Est. age or planted year</div>' +
     '<input type="text" id="tf-in-age" placeholder="~15 yrs / planted 2019" value="' + e(t.age || "") + '">' +
     '<div class="set-label">Trunk diameter (in)</div>' +
     '<input type="text" id="tf-in-diameter" inputmode="decimal" value="' + e(t.diameter || "") + '">' +
@@ -2225,7 +2282,6 @@ function openTreeEdit(t){
   $("te-cancel").addEventListener("click", () => openTreeDetail(t));
   $("te-save").addEventListener("click", async () => {
     const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
-    if (!species || !health || !age){ toast("Species, health, and age are required."); return; }
     const btn = $("te-save"); btn.disabled = true;
     let out;
     try { out = await api({ action:"treeUpdate", password:getPw(), id:t.id, fields:{
@@ -2359,7 +2415,7 @@ function openTreeAddSheet(){
     '<input type="file" id="ta-file" accept="image/*" capture="environment" style="display:none">' +
     '<button type="button" class="photo-btn" id="ta-photo-btn" style="width:100%">📷&nbsp; Take tree photo *</button>' +
     '<div id="ta-preview-wrap" style="display:none"><img id="ta-preview" alt="Tree photo" style="width:100%;border-radius:12px"></div>' +
-    '<div id="ta-analyzing" class="analyzing" style="display:none"><div class="ml-spinner"></div><span>Analyzing photo…</span></div>' +
+    '<div id="ta-analyzing" class="analyzing" style="display:none"><div class="ml-spinner"></div><span>Uploading photo…</span></div>' +
     '<div class="ai-note" id="ta-ai-note" style="display:none"></div>' +
     treeFormHtml({}) +
     '<div class="set-label" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--ink-soft)">Notes</div>' +
@@ -2393,6 +2449,8 @@ function openTreeAddSheet(){
   showSheet();
 }
 
+/* Fast capture: the photo just uploads — NO AI at capture time. Details are
+   optional; the batch evaluation (or the card's 🤖 button) fills them later. */
 function onAddTreePhoto(e){
   const file = e.target.files && e.target.files[0];
   if (!file) return;
@@ -2406,7 +2464,7 @@ function onAddTreePhoto(e){
     $("ta-analyzing").style.display = "flex";
     $("ta-ai-note").style.display = "none";
     let out;
-    try { out = await api({ action:"treeAnalyze", password:getPw(), photo:dataUrl }); }
+    try { out = await api({ action:"treePhoto", password:getPw(), photo:dataUrl }); }
     catch(err){ out = { ok:false, error:"Network error." }; }
     $("ta-analyzing").style.display = "none";
     if (!out || !out.ok){
@@ -2418,31 +2476,16 @@ function onAddTreePhoto(e){
       return;
     }
     addTreeState.fileId = out.fileId;
-    const s = out.suggestions;
-    if (s){
-      if (s.species && !$("tf-in-species").value) $("tf-in-species").value = s.species;
-      if (s.health) $("tf-in-health").value = s.health;
-      if (s.est_age && !$("tf-in-age").value) $("tf-in-age").value = s.est_age;
-      if (s.trunk_diameter_in && !$("tf-in-diameter").value) $("tf-in-diameter").value = String(s.trunk_diameter_in);
-      if (s.notes && !$("tf-in-notes").value) $("tf-in-notes").value = s.notes;
-      const conf = (s.species_confidence != null) ? Math.round(s.species_confidence * 100) + "%" : "";
-      addTreeState.ai = [s.species + (conf ? " (" + conf + ")" : ""), s.health, s.est_age].filter(Boolean).join(", ");
-      $("ta-ai-note").textContent = "🤖 AI suggestion — please verify: " + addTreeState.ai +
-        (s.health_reason ? " · " + s.health_reason : "");
-      $("ta-ai-note").style.display = "block";
-    } else {
-      addTreeState.ai = null;
-      $("ta-ai-note").textContent = "AI couldn't analyze this photo — fill the fields in manually.";
-      $("ta-ai-note").style.display = "block";
-    }
+    $("ta-ai-note").textContent = "Photo saved. Details are optional — AI can evaluate later (🤖 on the tree's card, or the batch run).";
+    $("ta-ai-note").style.display = "block";
   });
 }
 
 async function saveNewTree(){
   if (!addTreeState.fileId){ toast("Add a photo first."); return; }
   if (addTreeState.lat == null){ toast("Set the tree's location — tap the map to drop the pin."); return; }
+  // Photo + pin are all that's required; everything else is optional.
   const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
-  if (!species || !health || !age){ toast("Species, health, and age are required."); return; }
   const btn = $("ta-save"); btn.disabled = true;
   let out;
   try { out = await api({ action:"treeAdd", password:getPw(),
