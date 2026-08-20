@@ -953,7 +953,7 @@ async function loadReports(fromLogin, refit){
   completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
   setMapLoading(false);
   drawMarkers(refit !== false);
-  if (photoQueue.length) processPhotoQueue();   // resume background uploads after a re-login
+  if (syncQueue.length) processSyncQueue();   // resume background sync after a re-login
 }
 
 /* ---------- Detail sheet ---------- */
@@ -2077,6 +2077,10 @@ function drawTrees(fit){
         iconSize: [16, 16], iconAnchor: [8, 8] }) });
       mk.on("dragend", async () => {
         const p = mk.getLatLng();
+        if (isPendingTree(t)){
+          mk.setLatLng([t.lat, t.lng]);
+          toast("Still saving — try moving it again in a few seconds."); return;
+        }
         let out;
         try { out = await api({ action:"treeMove", password:getPw(), id:t.id, lat:p.lat, lng:p.lng }); }
         catch(e){ out = { ok:false, error:"Network error." }; }
@@ -2118,12 +2122,11 @@ function openTreeDetail(t){
       'style="background:' + (TREE_COLORS[t.health] || "#6E6357") + ';cursor:pointer">' + e(t.health || "Unassessed") + '</span>' +
     ' <span id="dt-title" title="Tap to edit details" style="font-weight:700;font-size:17px;cursor:pointer">' +
       e(t.tag) + ' · ' + e(t.species || "Unknown species") + ' <span class="loc-edit">✎</span></span>' +
+    (isSyncing(t) ? '<div class="ai-note" style="margin-top:8px">📤 Saving in the background…</div>' : '') +
     (t.photo
       ? '<img id="dt-photo" src="' + t.photo + '" alt="Tree photo" style="cursor:zoom-in">'
-      : (photoQueue.some(j => j.id === t.id)
-          ? '<div class="ai-note" style="margin-top:10px">📤 Photo uploading in the background…</div>'
-          : '<input type="file" id="dt-file" accept="image/*" capture="environment" style="display:none">' +
-            '<button class="photo-btn" id="dt-addphoto" type="button" style="width:100%;margin-top:10px">📷 Add photo</button>')) +
+      : '<input type="file" id="dt-file" accept="image/*" capture="environment" style="display:none">' +
+        '<button class="photo-btn" id="dt-addphoto" type="button" style="width:100%;margin-top:10px">📷 Add photo</button>') +
     '<p class="meta">Age: ' + e(t.age || "—") + '  ·  Trunk: ' + e(t.diameter ? t.diameter + '"' : "—") +
       '  ·  Irrigation: ' + e(t.irrigation || "—") + '  ·  Trimmed: ' + e(t.trimmed || "—") + '</p>' +
     '<p class="meta" id="dt-loc">📍 <span class="loc-link">' + e(t.area || "View on map") + '</span> <span class="loc-edit">tap to move pin</span></p>' +
@@ -2151,8 +2154,9 @@ function openTreeDetail(t){
       if (!file) return;
       compressImage(file, dataUrl => {
         if (!dataUrl){ toast("Couldn't read that image."); return; }
+        t.photo = dataUrl;   // show it immediately; the queue swaps in the Drive URL
         queuePhotoUpload(t.id, t.tag, dataUrl);
-        openTreeDetail(t);   // re-render shows the uploading note
+        openTreeDetail(t);
       });
     });
   }
@@ -2165,7 +2169,9 @@ function openTreeDetail(t){
     body.style.display = open ? "none" : "block";
     $("dt-hist-arrow").textContent = open ? "▸" : "▾";
   });
-  $("dt-loc").onclick = () => openMapView(t.lat, t.lng, t.tag, null, async (la, ln) => {
+  $("dt-loc").onclick = () => {
+    if (isPendingTree(t)){ toast("Still saving — try again in a few seconds."); return; }
+    openMapView(t.lat, t.lng, t.tag, null, async (la, ln) => {
     let out;
     try { out = await api({ action:"treeMove", password:getPw(), id:t.id, lat:la, lng:ln }); }
     catch(err){ out = { ok:false, error:"Network error." }; }
@@ -2175,7 +2181,8 @@ function openTreeDetail(t){
     drawTrees(false);
     snack("Tree location updated.");
     return true;
-  }, t.id);   // show the other trees so this one can be placed in relation
+    }, t.id);   // show the other trees so this one can be placed in relation
+  };
   $("dt-health").addEventListener("click", () => logHealthCheck(t));
   $("dt-edit").addEventListener("click", () => openTreeEdit(t));
   $("dt-ai").addEventListener("click", ev => aiEvaluate(t, ev.target));
@@ -2207,12 +2214,8 @@ function renderTreeLog(raw){
 /* Manual AI evaluation of one tree — fills only fields still blank, so
    human-entered values are never overwritten. */
 async function aiEvaluate(t, btn){
-  if (!t.photo){
-    toast(photoQueue.some(j => j.id === t.id)
-      ? "This tree's photo is still uploading — try again in a moment."
-      : "This tree has no photo yet — add one first.");
-    return;
-  }
+  if (isSyncing(t)){ toast("This tree is still syncing — try again in a few seconds."); return; }
+  if (!t.photo){ toast("This tree has no photo yet — add one first."); return; }
   btn.disabled = true; btn.textContent = "🤖 Evaluating…";
   let out;
   try { out = await api({ action:"treeEvaluate", password:getPw(), id:t.id }); }
@@ -2235,6 +2238,7 @@ async function aiEvaluate(t, btn){
 }
 
 async function saveTreeNote(t){
+  if (isPendingTree(t)){ toast("Still saving — try again in a few seconds."); return; }
   const text = $("dt-note").value.trim();
   if (!text){ toast("Type a note first."); return; }
   let out;
@@ -2253,6 +2257,7 @@ async function saveTreeNote(t){
 }
 
 function logHealthCheck(t){
+  if (isPendingTree(t)){ toast("Still saving — try again in a few seconds."); return; }
   $("hm-health").value = t.health || "Good";
   $("hm-note").value = "";
   $("healthmodal").classList.add("show");
@@ -2302,6 +2307,7 @@ function treeFormHtml(t){
 }
 
 function openTreeEdit(t){
+  if (isPendingTree(t)){ toast("Still saving — try again in a few seconds."); return; }
   const d = $("d-tree");
   d.innerHTML =
     '<span class="pill" style="background:var(--accent-deep)">Editing ' + escapeHtml(t.tag) + '</span>' +
@@ -2339,6 +2345,7 @@ function openTreeEdit(t){
 }
 
 function openTreeIssue(t){
+  if (isPendingTree(t)){ toast("Still saving — try again in a few seconds."); return; }
   $("ti-desc").value = "";
   $("ti-type").value = "Landscaping";
   $("treeissuemodal").classList.add("show");
@@ -2493,96 +2500,135 @@ function onAddTreePhoto(e){
   });
 }
 
-/* ---------- Background photo upload queue ---------- */
-const photoQueue = [];   // { id, tag, dataUrl, tries }
-let photoQueueBusy = false;
+/* ---------- Background sync queue (tree saves + photo uploads) ----------
+   Save is INSTANT: the tree goes on the map locally with a pending id, and
+   this queue writes it to the sheet (then attaches its photo) behind you.
+   Serial, retries with backoff, survives re-login, warns before page close. */
+const syncQueue = [];   // {kind:"tree", local, payload, photo, saved, tries} | {kind:"photo", id, dataUrl, tries}
+let syncBusy = false;
+let pendingSeq = 0;
+
+function isPendingTree(t){ return String(t.id).indexOf("pending-") === 0; }
+function isSyncing(t){
+  return isPendingTree(t) || syncQueue.some(j =>
+    (j.kind === "tree" && j.local === t) || (j.kind === "photo" && j.id === t.id));
+}
 
 function updateUploadBadge(stalled){
   const b = $("upload-badge");
-  if (!photoQueue.length){ b.style.display = "none"; return; }
+  if (!syncQueue.length){ b.style.display = "none"; return; }
   b.style.display = "block";
-  b.textContent = "📤 " + photoQueue.length + " photo" + (photoQueue.length > 1 ? "s" : "") +
-    (stalled ? " — retrying…" : " uploading…");
+  b.textContent = "📤 " + syncQueue.length + " upload" + (syncQueue.length > 1 ? "s" : "") +
+    (stalled ? " — retrying…" : " in progress…");
 }
 
-function queuePhotoUpload(id, tag, dataUrl){
-  photoQueue.push({ id: id, tag: tag, dataUrl: dataUrl, tries: 0 });
+function queueTreeSave(local, payload, photoDataUrl){
+  syncQueue.push({ kind:"tree", local: local, payload: payload, photo: photoDataUrl, saved: false, tries: 0 });
   updateUploadBadge();
-  processPhotoQueue();
+  processSyncQueue();
+}
+function queuePhotoUpload(id, tag, dataUrl){
+  syncQueue.push({ kind:"photo", id: id, dataUrl: dataUrl, tries: 0 });
+  updateUploadBadge();
+  processSyncQueue();
 }
 
-async function processPhotoQueue(){
-  if (photoQueueBusy) return;
-  photoQueueBusy = true;
-  while (photoQueue.length){
-    const job = photoQueue[0];
-    let out;
-    try { out = await api({ action:"treeAttachPhoto", password:getPw(), id:job.id, photo:job.dataUrl }); }
-    catch(e){ out = null; }
-    if (out && out.ok){
-      photoQueue.shift();
-      const t = trees.find(x => x.id === job.id);
-      if (t){ t.photo = out.photo; t.photoFull = out.photoFull; }
-      // Refresh the card if that tree happens to be open.
-      if (currentTree && currentTree.id === job.id && $("d-tree").style.display !== "none") openTreeDetail(currentTree);
-      updateUploadBadge();
-    } else if (out && out.auth === false){
-      // Session died mid-walk: keep the queue, resume after re-login.
-      photoQueueBusy = false;
+async function processSyncQueue(){
+  if (syncBusy) return;
+  syncBusy = true;
+  while (syncQueue.length){
+    const job = syncQueue[0];
+    const authDead = () => {
+      syncBusy = false;
       updateUploadBadge(true);
-      clearPw(); showLogin("Session expired — sign in to finish uploading photos.");
-      return;
-    } else {
-      // Patchy signal: back off and retry; the queue never drops a photo.
+      clearPw(); showLogin("Session expired — sign in to finish syncing.");
+    };
+    const backoff = async () => {
       job.tries++;
       updateUploadBadge(true);
       await new Promise(r => setTimeout(r, Math.min(30000, 3000 * job.tries)));
+    };
+
+    // Leg 1: create the tree row (tree jobs only).
+    if (job.kind === "tree" && !job.saved){
+      let out;
+      try { out = await api(Object.assign({ action:"treeAdd", password:getPw() }, job.payload)); }
+      catch(e){ out = null; }
+      if (out && out.ok){
+        job.saved = true;
+        const t = job.local;   // graft the server identity onto the local tree
+        t.id = out.tree.id; t.tag = out.tree.tag; t.area = out.tree.area;
+        t.log = out.tree.log; t.addedBy = out.tree.addedBy; t.addedAt = out.tree.addedAt;
+        if (currentTree === t && $("d-tree").style.display !== "none") openTreeDetail(t);
+      } else if (out && out.auth === false){ authDead(); return; }
+      else { await backoff(); continue; }
     }
+
+    // Leg 2: attach the photo (both job kinds).
+    const photo = job.kind === "tree" ? job.photo : job.dataUrl;
+    const targetId = job.kind === "tree" ? job.local.id : job.id;
+    if (photo){
+      let out2;
+      try { out2 = await api({ action:"treeAttachPhoto", password:getPw(), id: targetId, photo: photo }); }
+      catch(e){ out2 = null; }
+      if (out2 && out2.ok){
+        const t = job.kind === "tree" ? job.local : trees.find(x => x.id === targetId);
+        if (t){ t.photo = out2.photo; t.photoFull = out2.photoFull; }
+        if (currentTree && currentTree.id === targetId && $("d-tree").style.display !== "none") openTreeDetail(currentTree);
+      } else if (out2 && out2.auth === false){ authDead(); return; }
+      else { await backoff(); continue; }
+    }
+    syncQueue.shift();
+    updateUploadBadge();
   }
-  photoQueueBusy = false;
+  syncBusy = false;
   updateUploadBadge();
 }
 
-// Losing the page loses queued photos — warn before that happens.
+// Losing the page loses queued saves/photos — warn before that happens.
 window.addEventListener("beforeunload", e => {
-  if (photoQueue.length){ e.preventDefault(); e.returnValue = ""; }
+  if (syncQueue.length){ e.preventDefault(); e.returnValue = ""; }
 });
 
-async function saveNewTree(){
+function saveNewTree(){
   if (!addTreeState.photo){ toast("Add a photo first."); return; }
   if (addTreeState.lat == null){ toast("Set the tree's location — tap the map to drop the pin."); return; }
-  // Photo + pin are all that's required; everything else is optional. The
-  // save itself is tiny (no photo payload) so it returns in about a second —
-  // the photo uploads in the background while you walk to the next tree.
-  const species = $("tf-in-species").value.trim(), health = $("tf-in-health").value, age = $("tf-in-age").value.trim();
-  const btn = $("ta-save"); btn.disabled = true;
-  let out;
-  try { out = await api({ action:"treeAdd", password:getPw(),
-    species: species, health: health, age: age,
+  // INSTANT save: the tree goes on the map immediately with a pending id;
+  // the sheet write and photo upload happen in the background queue. No
+  // network wait between trees at all.
+  pendingSeq++;
+  const local = {
+    id: "pending-" + pendingSeq, tag: "T-…",
+    species: $("tf-in-species").value.trim(),
+    health: $("tf-in-health").value,
+    age: $("tf-in-age").value.trim(),
     diameter: $("tf-in-diameter").value.trim(),
     irrigation: $("tf-in-irrigation").value,
     trimmed: $("tf-in-trimmed").value,
+    log: "", photo: addTreeState.photo, photoFull: "",
+    lat: addTreeState.lat, lng: addTreeState.lng,
+    area: "", addedBy: (me && me.stamp) || "",
+    addedAt: new Date().toISOString()
+  };
+  const payload = {
+    species: local.species, health: local.health, age: local.age,
+    diameter: local.diameter, irrigation: local.irrigation, trimmed: local.trimmed,
     notes: $("tf-in-notes").value.trim(),
-    lat: addTreeState.lat, lng: addTreeState.lng }); }
-  catch(e){ out = { ok:false, error:"Network error — not saved." }; }
-  btn.disabled = false;
-  if (!out.ok){
-    if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
-    toast(out.error || "Couldn't save."); return;
-  }
-  trees.push(out.tree);
-  queuePhotoUpload(out.tree.id, out.tree.tag, addTreeState.photo);
-  addTreeState.photo = null;
-  if (out.tree.species && treeSpecies.indexOf(out.tree.species) < 0){
-    treeSpecies.push(out.tree.species); treeSpecies.sort(); refreshSpecies(treeSpecies);
+    lat: local.lat, lng: local.lng
+  };
+  trees.push(local);
+  if (local.species && treeSpecies.indexOf(local.species) < 0){
+    treeSpecies.push(local.species); treeSpecies.sort(); refreshSpecies(treeSpecies);
   }
   drawTrees(false);
+  queueTreeSave(local, payload, addTreeState.photo);
+  addTreeState.photo = null;
   const d = $("d-tree-add");
   d.innerHTML =
     '<div style="text-align:center;padding:26px 8px">' +
       '<div style="font-size:40px">🌳</div>' +
-      '<h3 style="margin:8px 0 4px">' + escapeHtml(out.tree.tag) + ' saved</h3>' +
-      '<p class="meta">' + ([out.tree.species, out.tree.health, out.tree.area].filter(Boolean).map(escapeHtml).join(' · ') || 'Photo uploading in the background') + '</p>' +
+      '<h3 style="margin:8px 0 4px">Tree saved</h3>' +
+      '<p class="meta">Syncing in the background — its tag will appear shortly.</p>' +
       '<div class="actions" style="margin-top:18px">' +
         '<button class="btn-done" id="ta-another" type="button">Add another tree</button>' +
         '<button class="btn-reopen" id="ta-done" type="button">Done</button>' +
