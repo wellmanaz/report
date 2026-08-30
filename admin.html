@@ -1321,7 +1321,10 @@ async function update(newStatus){
     toast(out.error || "Couldn't save."); return;
   }
   await loadReports(false, false);
-  if (wasComplete) snack("Completed ✓", id);
+  if (wasComplete) snack("Completed ✓", async () => {
+    try { await api({ action:"adminUpdate", password:getPw(), id:id, status:"In Process", note:"" }); } catch(e){}
+    loadReports(false, false);
+  });
   else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
 }
 
@@ -1985,16 +1988,15 @@ $("en-go").addEventListener("click", async () => {
 });
 
 /* ---------- Snackbar / toast ---------- */
-function snack(msg, undoId){
+function snack(msg, undoFn){
   $("snack-msg").textContent = msg;
-  $("snack-undo").style.display = undoId ? "inline" : "none";
+  $("snack-undo").style.display = undoFn ? "inline" : "none";
   $("snack").classList.add("show");
   clearTimeout(snackTimer);
-  snackTimer = setTimeout(() => $("snack").classList.remove("show"), 5000);
+  snackTimer = setTimeout(() => $("snack").classList.remove("show"), 8000);
   $("snack-undo").onclick = async () => {
     $("snack").classList.remove("show");
-    try { await api({ action:"adminUpdate", password:getPw(), id:undoId, status:"In Process", note:"" }); } catch(e){}
-    loadReports(false, false);
+    if (undoFn) await undoFn();
   };
 }
 function toast(msg){ snack(msg, null); }
@@ -2088,9 +2090,21 @@ function drawTrees(fit){
           mk.setLatLng([t.lat, t.lng]);   // snap back
           toast(out.error || ("Couldn't move " + t.tag + ".")); return;
         }
+        const oldLat = t.lat, oldLng = t.lng;
         t.lat = p.lat; t.lng = p.lng;
         if (typeof out.area === "string") t.area = out.area;
-        toast(t.tag + " moved" + (t.area ? " · " + t.area : "") + ".");
+        // Undo guards against accidental drags nudging a pin while panning.
+        snack(t.tag + " moved" + (t.area ? " · " + t.area : "") + ".", async () => {
+          let back;
+          try { back = await api({ action:"treeMove", password:getPw(), id:t.id, lat:oldLat, lng:oldLng }); }
+          catch(e){ back = null; }
+          if (back && back.ok){
+            t.lat = oldLat; t.lng = oldLng;
+            if (typeof back.area === "string") t.area = back.area;
+            drawTrees(false);
+            toast(t.tag + " move undone.");
+          } else toast("Couldn't undo the move — try dragging it back.");
+        });
       });
     } else {
       mk = L.circleMarker([t.lat, t.lng], {
@@ -2424,11 +2438,14 @@ function startAddTree(){
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       p => {
+        // DRIFT FIX: a GPS fix can arrive many seconds late. If the surveyor
+        // already placed the pin (tap or drag), the fix must never stomp it.
+        if (addTreeState.lat != null) return;
         taMap.setView([p.coords.latitude, p.coords.longitude], 19);
         setTaPin(p.coords.latitude, p.coords.longitude);
         updateAddLoc("📍 GPS captured — drag the pin if it's off");
       },
-      () => updateAddLoc("⚠️ No GPS fix — tap the map to mark the tree"),
+      () => { if (addTreeState.lat == null) updateAddLoc("⚠️ No GPS fix — tap the map to mark the tree"); },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
   } else updateAddLoc("⚠️ No GPS — tap the map to mark the tree");
 }

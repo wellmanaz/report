@@ -56,6 +56,22 @@
   }
   .step h2{font-size:17px;font-weight:650;}
   .optional{font-size:12px;color:var(--ink-soft);font-weight:400;margin-left:auto;}
+  .optional.req{color:#C0392B;font-weight:650;}
+
+  /* Missing-required highlight: applied when Send is tapped with gaps */
+  .step.need{
+    border-color:#C0392B;
+    box-shadow:0 0 0 2px rgba(192,57,43,.25);
+    animation:need-shake .4s ease;
+  }
+  @keyframes need-shake{
+    0%,100%{transform:translateX(0);}
+    25%{transform:translateX(-5px);}
+    50%{transform:translateX(5px);}
+    75%{transform:translateX(-3px);}
+  }
+  .need-msg{display:none;font-size:13px;color:#C0392B;font-weight:650;margin-top:10px;}
+  .step.need .need-msg{display:block;}
 
   /* Location */
   #loc-status{font-size:14px;color:var(--ink-soft);}
@@ -250,10 +266,11 @@
     <div id="map" role="application" aria-label="Map for choosing the issue location"></div>
     <div class="map-hint" id="map-hint">Tap the map to place the pin where the issue is. Drag to fine-tune.</div>
     <button type="button" class="btn-ghost" id="adjust-btn" style="display:none">Adjust pin on map</button>
+    <div class="need-msg" id="need-loc">Set the location — allow location access or tap the map.</div>
   </section>
 
   <!-- STEP 2: PHOTO -->
-  <section class="step">
+  <section class="step" id="step-photo">
     <div class="step-head">
       <div class="step-num">2</div>
       <h2>Add a photo</h2>
@@ -269,14 +286,15 @@
       <img id="photo-preview" alt="Photo of the reported issue">
       <button type="button" id="photo-remove">Remove</button>
     </div>
+    <div class="need-msg">Add a photo here — or a description in step 4. One of the two is required.</div>
   </section>
 
   <!-- STEP 3: TYPE -->
-  <section class="step">
+  <section class="step" id="step-type">
     <div class="step-head">
       <div class="step-num">3</div>
       <h2>Type of issue</h2>
-      <span class="optional">required</span>
+      <span class="optional req">required</span>
     </div>
     <select id="issue-type">
       <option value="" selected>Select a category…</option>
@@ -285,16 +303,18 @@
       <option value="General Maintenance">General Maintenance</option>
       <option value="Other">Other</option>
     </select>
+    <div class="need-msg">Pick a category for the issue.</div>
   </section>
 
   <!-- STEP 4: DETAILS -->
-  <section class="step">
+  <section class="step" id="step-details">
     <div class="step-head">
       <div class="step-num">4</div>
       <h2>What's going on?</h2>
       <span class="optional">optional</span>
     </div>
     <textarea id="description" placeholder="Example: Sprinkler head broken, water pooling on the sidewalk." maxlength="2000"></textarea>
+    <div class="need-msg">Describe the issue here — or add a photo in step 2. One of the two is required.</div>
   </section>
 
   <!-- STEP 5: EMAIL -->
@@ -322,7 +342,7 @@
     <label>Leave this field empty<input type="text" id="website" tabindex="-1" autocomplete="off"></label>
   </div>
 
-  <button id="submit-btn" disabled>Send report</button>
+  <button id="submit-btn">Send report</button>
   <div id="submit-note">Add a photo or a description to send.</div>
 </div>
 
@@ -531,8 +551,10 @@ $("another-btn").addEventListener("click", () => {
   $("map-hint").classList.remove("show");
   $("adjust-btn").style.display = "none";
   setLocStatus("", "");
+  document.querySelectorAll(".step.need").forEach(s => s.classList.remove("need"));
+  $("error-box").style.display = "none";
   const btn = $("submit-btn");
-  btn.disabled = true;
+  btn.disabled = false;
   btn.textContent = "Send report";
   $("success").style.display = "none";
   beginReport();                       // shows the form + requests fresh GPS now
@@ -594,7 +616,6 @@ function locationOutside(){
 }
 function updateSubmit(){
   const ok = hasContent() && hasType() && hasLocation();
-  $("submit-btn").disabled = !ok;
   $("submit-note").textContent = ok
     ? "Sends straight to the community manager."
     : !hasContent()
@@ -604,6 +625,13 @@ function updateSubmit(){
         : locationOutside()
           ? "The pin is outside Andersen Springs — move it to where the issue is."
           : "Waiting for a location — allow location access or tap the map.";
+  // Clear the red "missing" highlight on each section as soon as it's satisfied.
+  if (hasContent()){
+    $("step-photo").classList.remove("need");
+    $("step-details").classList.remove("need");
+  }
+  if (hasType()) $("step-type").classList.remove("need");
+  if (hasLocation()) $("step-location").classList.remove("need");
 }
 $("description").addEventListener("input", updateSubmit);
 $("issue-type").addEventListener("change", updateSubmit);
@@ -616,7 +644,42 @@ function showError(msg){
 }
 
 /* ---------- Send ---------- */
+/* The button is always tappable. If something required is missing, tapping it
+   highlights the exact section(s) in red and scrolls to the first one, instead
+   of silently sitting disabled. */
+function validateForSend(){
+  document.querySelectorAll(".step.need").forEach(s => {
+    s.classList.remove("need");
+    void s.offsetWidth;              // restart the shake animation on re-tap
+  });
+  const missing = [];
+  if (!hasContent()){
+    $("step-photo").classList.add("need");
+    $("step-details").classList.add("need");
+    missing.push("a photo or a short description");
+  }
+  if (!hasType()){
+    $("step-type").classList.add("need");
+    missing.push("the type of issue");
+  }
+  if (!hasLocation()){
+    $("step-location").classList.add("need");
+    $("need-loc").textContent = locationOutside()
+      ? "The pin is outside Andersen Springs — move it to where the issue is."
+      : "Set the location — allow location access or tap the map.";
+    missing.push(locationOutside() ? "a pin inside Andersen Springs" : "the location");
+  }
+  if (!missing.length) return true;
+  const box = $("error-box");
+  box.textContent = "Almost there — still needed: " + missing.join(", ") + ". See the highlighted section" + (document.querySelectorAll(".step.need").length > 1 ? "s" : "") + " below.";
+  box.style.display = "block";
+  const first = document.querySelector(".step.need");
+  if (first) first.scrollIntoView({ behavior:"smooth", block:"center" });
+  return false;
+}
+
 $("submit-btn").addEventListener("click", async () => {
+  if (!validateForSend()) return;
   const btn = $("submit-btn");
   btn.disabled = true;
   btn.textContent = "Sending…";
