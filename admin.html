@@ -2002,6 +2002,15 @@ function snack(msg, undoFn){
 function toast(msg){ snack(msg, null); }
 
 /* ================= Trees mode ================= */
+/* DORMANT (Sept 2026): the landscaper keeps their own tree index and declined
+   to use this. Flip TREES_ENABLED to true to bring the Trees view back; the
+   backend (trees.gs), the "HOA Tree Inventory" sheet and the photo folder are
+   all still in place. */
+const TREES_ENABLED = false;
+if (!TREES_ENABLED){
+  const opt = $("view-select").querySelector('option[value="trees"]');
+  if (opt) opt.remove();
+}
 let mode = "issues", trees = [], treesLoaded = false, currentTree = null,
     treeSpecies = [], issuesStale = false;
 const addTreeState = { lat: null, lng: null, fileId: null, photo: null, ai: null };
@@ -2011,6 +2020,7 @@ const TREE_COLORS = { "Good":"#4A7C59", "Fair":"#E6A700", "Poor":"#E07B00",
 /* Views are fully separate worlds: the Trees screen never shows issues or
    the issue-status legend, and nothing tree-related appears in Issues. */
 function setMode(m){
+  if (m === "trees" && !TREES_ENABLED) m = "issues";
   if (m === mode) return;
   mode = m;
   closeDetail();
