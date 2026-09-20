@@ -108,7 +108,7 @@
      highlights green. */
   .legend .divider{border-top:1px solid var(--line);margin:6px -10px 5px;}
   .legend .row-complete{border-radius:8px;padding:3px 6px;margin:2px -6px;}
-  .legend.complete-mode .row-open,.legend.complete-mode .row-inproc,.legend.complete-mode .row-proposal{opacity:.4;}
+  .legend.complete-mode .row-open,.legend.complete-mode .row-inproc{opacity:.4;}
   .legend.complete-mode .row-complete{background:#E7F0E9;font-weight:700;color:#2F5E3F;}
   /* Completed-issues date range (shown while the Complete filter is on) */
   #complete-range{margin:4px 0 2px 21px;display:none;}
@@ -273,7 +273,24 @@
   .note-edit{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px;
     font-size:14.5px;font-family:inherit;background:#fff;min-height:56px;resize:vertical;}
   .notes-empty{font-size:13px;color:var(--ink-soft);font-style:italic;margin:8px 0;}
-  #d-note-save{margin-top:8px;}
+  /* Note + status composer: one form, one Save */
+  .status-row{display:flex;align-items:center;gap:10px;margin-top:10px;}
+  .status-label{font-size:13px;font-weight:700;color:var(--ink);flex:none;}
+  .seg{display:flex;flex:1;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#FDFCFA;}
+  .seg button{flex:1;border:none;background:none;padding:11px 4px;font-size:14px;font-weight:600;
+    font-family:inherit;color:var(--ink-soft);cursor:pointer;}
+  .seg button + button{border-left:1px solid var(--line);}
+  .seg button.on{color:#fff;}
+  .seg button.on[data-s=""]{background:var(--clay);}
+  .seg button.on[data-s="In Process"]{background:var(--inproc);}
+  .seg button.on[data-s="Complete"]{background:var(--done);}
+  .eta-wrap{margin-top:10px;}
+  .eta-wrap label{display:block;font-size:13px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+  .eta-wrap input{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;
+    font-size:15px;font-family:inherit;background:#FDFCFA;color:var(--ink);}
+  .composer-hint{font-size:12.5px;color:var(--ink-soft);margin:8px 0 0;}
+  .composer-hint:empty{display:none;}
+  .composer-save{display:block;width:100%;margin-top:10px;padding:14px;font-size:16px;border-radius:12px;}
   /* Category line — click to change */
   .type-line{cursor:pointer;color:var(--accent-deep);font-weight:600;display:inline-block;}
   .type-select{font-size:15px;font-family:inherit;padding:8px 10px;border-radius:8px;
@@ -413,7 +430,6 @@
     <div class="row"><span class="dot ring"></span> Update requested <span class="always">always on</span></div>
     <label class="row row-open"><input type="checkbox" id="f-open" checked><span class="dot" style="background:#C0653A"></span> Open</label>
     <label class="row row-inproc"><input type="checkbox" id="f-inproc" checked><span class="dot" style="background:#E6A700"></span> In Process</label>
-    <label class="row row-proposal"><input type="checkbox" id="f-proposal" checked><span class="dot" style="background:#2563EB"></span> Proposal for Review</label>
     <div class="divider"></div>
     <label class="row row-complete"><input type="checkbox" id="f-complete"><span class="dot" style="background:#4A7C59"></span> Completed <span class="always">only</span></label>
     <div id="complete-range">
@@ -466,8 +482,7 @@
 
     <div class="notes-head">Notes</div>
     <div id="d-notes" class="notes-thread"></div>
-    <textarea id="d-note" placeholder="Add a note — post an update, ask a question, or leave feedback for the team"></textarea>
-    <button id="d-note-save" class="btn-note" type="button">Save note</button>
+    <div id="d-composer"></div>
 
     <div class="actions" id="d-actions"></div>
   </div>
@@ -614,18 +629,6 @@
 <div id="notemodal" class="modal">
   <div class="modal-card">
     <p id="notemodal-msg"></p>
-    <div id="notemodal-eta-wrap" style="display:none">
-      <p class="modal-label">Estimated completion date (required)</p>
-      <input type="date" id="notemodal-eta">
-    </div>
-    <div id="notemodal-reason-wrap" style="display:none">
-      <p class="modal-label">Resolution (required)</p>
-      <select id="notemodal-reason" style="margin-bottom:10px">
-        <option value="Resolved" selected>Resolved</option>
-        <option value="Proposal rejected">Proposal rejected</option>
-        <option value="Other">Other…</option>
-      </select>
-    </div>
     <textarea id="notemodal-input" maxlength="2000" placeholder="Type a note…"></textarea>
     <div class="modal-btns">
       <button id="notemodal-cancel" class="linkbtn" type="button">Cancel</button>
@@ -687,8 +690,7 @@ const isSuper    = () => !!(me && me.perms && me.perms.superUser);
 
 const colorFor = r => r.urgent ? "#E11900"
   : r.status === "Complete" ? "#4A7C59"
-  : r.status === "In Process" ? "#E6A700"
-  : r.status === "Proposal for Review" ? "#2563EB" : "#C0653A";
+  : r.status === "In Process" ? "#E6A700" : "#C0653A";
 const getPw = () => sessionStorage.getItem(PW_KEY) || "";
 const setPw = v => sessionStorage.setItem(PW_KEY, v);
 const clearPw = () => sessionStorage.removeItem(PW_KEY);
@@ -780,7 +782,6 @@ function isVisible(r){
   if (r.urgent || r.updateRequested) return true;
   if (r.status === "Complete")   return false;
   if (r.status === "In Process") return $("f-inproc").checked;
-  if (r.status === "Proposal for Review") return $("f-proposal").checked;
   return $("f-open").checked;                       // blank status = Open
 }
 
@@ -799,14 +800,12 @@ function singleMarker(r){
 function aggStatus(members){
   if (members.every(m => m.status === "Complete")) return "Complete";
   if (members.some(m => m.status === "In Process")) return "In Process";
-  if (members.some(m => m.status === "Proposal for Review")) return "Proposal for Review";
   return "";   // open
 }
 function bundleColor(members){
   if (members.some(m => m.urgent)) return "#E11900";
   const s = aggStatus(members);
-  return s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700"
-       : s === "Proposal for Review" ? "#2563EB" : "#C0653A";
+  return s === "Complete" ? "#4A7C59" : s === "In Process" ? "#E6A700" : "#C0653A";
 }
 function bundlePrimary(members){
   return members.slice().sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""))[0];
@@ -867,7 +866,7 @@ function setCompleteMode(on){
 
 $("cat-filter").addEventListener("change", () => drawMarkers(false));
 
-["f-open", "f-inproc", "f-proposal"].forEach(id =>
+["f-open", "f-inproc"].forEach(id =>
   $(id).addEventListener("change", () => {
     // Ticking an active-work filter exits the completed review mode.
     if ($(id).checked && $("f-complete").checked){
@@ -884,12 +883,10 @@ $("f-complete").addEventListener("change", () => {
   if (on){
     $("f-open").checked = false;
     $("f-inproc").checked = false;
-    $("f-proposal").checked = false;
-  } else if (!$("f-open").checked && !$("f-inproc").checked && !$("f-proposal").checked){
+  } else if (!$("f-open").checked && !$("f-inproc").checked){
     // Leaving review mode with nothing selected -> back to the working view.
     $("f-open").checked = true;
     $("f-inproc").checked = true;
-    $("f-proposal").checked = true;
   }
   setCompleteMode(on);
   if (on && !completedLoaded) loadReports(false, false);
@@ -950,6 +947,8 @@ async function loadReports(fromLogin, refit){
   const whoName = (me && me.name) || vendorName;
   $("who").textContent = whoName ? ("— " + whoName) : "";
   allReports = out.reports || [];
+  // "Proposal for Review" is retired: rows still carrying it show as Open.
+  allReports.forEach(r => { if (r.status === "Proposal for Review") r.status = ""; });
   completedLoaded = wantCompleted;   // remember whether Completed reports are in hand
   setMapLoading(false);
   drawMarkers(refit !== false);
@@ -999,23 +998,14 @@ function openDetail(r){
     ? ("🗓 Estimated completion " + new Date(r.eta).toLocaleDateString()) : "";
   $("d-updreq").textContent = r.updateRequested
     ? ("⟳ Update requested " + r.updateRequested.replace(/^\[|\]$/g, "")) : "";
-  $("d-note").value = "";
+  $("d-composer").innerHTML = composerHtml("d", NOTE_PLACEHOLDER);
+  initComposer("d", r.status || "", saveComposer);
   cancelEditDesc();            // reset the description editor to read mode
   notesEditIndex = -1;
   renderNotes(r.notes);       // show the notes thread
 
   const actions = $("d-actions");
-  actions.innerHTML = "";
-  if (canManage()){
-    if (r.status !== "In Process" && r.status !== "Complete")
-      actions.appendChild(mkBtn("Mark In Process", "btn-start", () => update("In Process")));
-    if (r.status !== "Proposal for Review" && r.status !== "Complete")
-      actions.appendChild(mkBtn("Proposal for Review", "btn-proposal", () => update("Proposal for Review")));
-    if (r.status !== "Complete")
-      actions.appendChild(mkBtn("Mark Complete", "btn-done", () => update("Complete")));
-    if (r.status === "Complete")
-      actions.appendChild(mkBtn("Reopen", "btn-reopen", () => update("In Process")));
-  }
+  actions.innerHTML = "";   // status changes live in the composer above
   // Request Update: open/in-process only, once per pending request.
   if (canRequest() && r.status !== "Complete" && !r.updateRequested)
     actions.appendChild(mkBtn("Request Update", "btn-request", () => requestUpdate(r)));
@@ -1213,62 +1203,25 @@ window.addEventListener("popstate", () => {
   if ($("sheet").classList.contains("show")) hideSheet();
 });
 
-/* Small in-app modal for status-update details. Resolves to { note, eta } or
+/* Small in-app modal that asks for an optional note. Resolves to { note } or
    null if cancelled. Used instead of window.prompt so there's no browser
-   title/URL. opts: requireEta (date must be picked before Save), reason
-   (completion picker: Resolved / Proposal rejected / Other — free text
-   required only for Other; the resulting note is never empty), showNote
-   (default true), initialNote (prefill the textarea). */
-function askUpdateInfo(message, opts){
-  opts = opts || {};
+   title/URL. */
+function askUpdateInfo(message){
   return new Promise(resolve => {
     const modal = $("notemodal"), input = $("notemodal-input");
-    const etaWrap = $("notemodal-eta-wrap"), etaInput = $("notemodal-eta");
-    const reasonWrap = $("notemodal-reason-wrap"), reasonSel = $("notemodal-reason");
     const saveBtn = $("notemodal-save"), cancelBtn = $("notemodal-cancel");
     $("notemodal-msg").textContent = message;
-    input.value = opts.initialNote || "";
-    etaWrap.style.display = opts.requireEta ? "block" : "none";
-    etaInput.value = "";
-    etaInput.min = new Date().toISOString().slice(0, 10);   // no past-dated estimates
-    reasonWrap.style.display = opts.reason ? "block" : "none";
-    reasonSel.value = "Resolved";
-    function syncNoteField(){
-      // Reason mode: the free-text box only appears for "Other".
-      if (opts.reason) input.style.display = reasonSel.value === "Other" ? "" : "none";
-      else input.style.display = opts.showNote === false ? "none" : "";
-      if (opts.reason && reasonSel.value === "Other"){
-        input.placeholder = "Describe the resolution…";
-        setTimeout(() => input.focus(), 50);
-      } else {
-        input.placeholder = "Type a note…";
-      }
-    }
-    syncNoteField();
+    input.value = "";
     modal.classList.add("show");
-    setTimeout(() => (opts.requireEta ? etaInput : (opts.reason ? reasonSel : input)).focus(), 50);
+    setTimeout(() => input.focus(), 50);
     function cleanup(){
       modal.classList.remove("show");
       saveBtn.removeEventListener("click", onSave);
       cancelBtn.removeEventListener("click", onCancel);
       modal.removeEventListener("click", onBackdrop);
       document.removeEventListener("keydown", onKey);
-      reasonSel.removeEventListener("change", syncNoteField);
-      input.placeholder = "Type a note…";
     }
-    function onSave(){
-      if (opts.requireEta && !etaInput.value){ toast("Pick an estimated completion date first."); return; }
-      let note = input.value.trim();
-      if (opts.reason){
-        if (reasonSel.value === "Other"){
-          if (!note){ toast("Describe the resolution first."); return; }
-        } else {
-          note = reasonSel.value;   // "Resolved" / "Proposal rejected"
-        }
-      }
-      const v = { note: note, eta: etaInput.value || "" };
-      cleanup(); resolve(v);
-    }
+    function onSave(){ const v = { note: input.value.trim() }; cleanup(); resolve(v); }
     function onCancel(){ cleanup(); resolve(null); }
     function onBackdrop(e){ if (e.target === modal) onCancel(); }
     function onKey(e){ if (e.key === "Escape") onCancel(); }
@@ -1276,45 +1229,88 @@ function askUpdateInfo(message, opts){
     cancelBtn.addEventListener("click", onCancel);
     modal.addEventListener("click", onBackdrop);
     document.addEventListener("keydown", onKey);
-    reasonSel.addEventListener("change", syncNoteField);
   });
+}
+
+/* ---------- Note + status composer ---------- */
+/* One form for both jobs: the note box, a status picker preselected to the
+   current status (managers only), and a single Save. Status left alone -> Save
+   posts just the note; status changed -> the same Save posts both. p is the id
+   prefix: "d" for a single report, "b" for a bundle. Status "" means Open. */
+const NOTE_PLACEHOLDER = "Add a note — post an update, ask a question, or leave feedback for the team";
+let composer = null;
+function composerHtml(p, placeholder){
+  return '<textarea id="' + p + '-note" maxlength="2000" placeholder="' + escapeHtml(placeholder) + '"></textarea>' +
+    (canManage()
+      ? '<div class="status-row"><span class="status-label">Status</span>' +
+        '<div class="seg" id="' + p + '-seg">' +
+          '<button type="button" data-s="">Open</button>' +
+          '<button type="button" data-s="In Process">In Process</button>' +
+          '<button type="button" data-s="Complete">Complete</button>' +
+        '</div></div>' +
+        '<div class="eta-wrap" id="' + p + '-eta-wrap" style="display:none">' +
+          '<label for="' + p + '-eta-input">Estimated completion (optional)</label>' +
+          '<input type="date" id="' + p + '-eta-input"></div>' +
+        '<p class="composer-hint" id="' + p + '-hint"></p>'
+      : '') +
+    '<button id="' + p + '-save" class="btn-note composer-save" type="button">Save note</button>';
+}
+/* from: the current status, or null when a bundle's members differ (nothing
+   preselected, so any pick counts as a change). */
+function initComposer(p, from, onSave){
+  composer = { p: p, from: from, to: from, placeholder: $(p + "-note").placeholder };
+  const seg = $(p + "-seg");
+  if (seg){
+    seg.querySelectorAll("button").forEach(b =>
+      b.addEventListener("click", () => { composer.to = b.dataset.s; syncComposer(); }));
+    $(p + "-eta-input").min = new Date().toISOString().slice(0, 10);   // no past-dated estimates
+  }
+  $(p + "-save").addEventListener("click", onSave);
+  syncComposer();
+}
+function composerChanged(){ return !!composer && composer.to !== composer.from; }
+function syncComposer(){
+  const c = composer, p = c.p, changed = composerChanged();
+  $(p + "-save").textContent = !changed ? "Save note" : "Save & mark " + (c.to || "Open");
+  const seg = $(p + "-seg");
+  if (!seg) return;
+  seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.s === c.to));
+  $(p + "-eta-wrap").style.display = (changed && c.to === "In Process") ? "block" : "none";
+  $(p + "-note").placeholder = (changed && c.to === "Complete")
+    ? "How was this resolved? Emailed to the reporter — left blank, it says “Resolved”."
+    : c.placeholder;
+  $(p + "-hint").textContent = !changed ? ""
+    : c.to === "Complete" ? "Completing closes the issue and emails the reporter."
+    : c.from === "Complete" ? "This reopens the issue."
+    : "";
+}
+/* Picked estimate ("YYYY-MM-DD" or ""); false if it's in the past. */
+function composerEta(){
+  const el = $(composer.p + "-eta-input");
+  const v = (el && composer.to === "In Process") ? el.value : "";
+  if (v && v < new Date().toISOString().slice(0, 10)){ toast("Estimated completion can't be in the past."); return false; }
+  return v;
+}
+/* Blank note on a status change -> a generic one, so the log still shows who
+   did what (and the reporter's closing email is never empty). */
+function defaultNote(newStatus){
+  return newStatus === "Complete" ? "Resolved" : newStatus === "In Process" ? "In process" : "";
+}
+function saveComposer(){
+  if (!current) return;
+  return composerChanged() ? update(composer.to) : saveNote();
 }
 
 /* ---------- Update ---------- */
 async function update(newStatus){
   if (!current) return;
-  let note = $("d-note").value.trim();
-  let eta = "";
-  // "Not yet being worked": blank/Open or Proposal for Review — starting work
-  // from either requires an estimated completion date (server enforces too).
-  const fromOpen = current.status !== "In Process" && current.status !== "Complete";
-  if (newStatus === "Complete"){
-    // Completing requires a resolution: Resolved / Proposal rejected / Other.
-    const info = await askUpdateInfo("Completing — how was this resolved?", { reason:true, initialNote: note });
-    if (info === null) return;             // cancelled — leave the status unchanged
-    note = info.note;
-  }
-  if (newStatus === "In Process"){
-    if (fromOpen){
-      // Starting work on an open report: an estimated completion date is
-      // REQUIRED (the backend enforces it too). Note stays optional.
-      const info = await askUpdateInfo(
-        "Starting work — set an estimated completion date. Add a note if helpful.",
-        { requireEta: true, initialNote: note });
-      if (info === null) return;           // cancelled — leave the status unchanged
-      note = info.note || "In process";    // blank -> generic note (stamped with name + time)
-      eta = info.eta;
-    } else if (!note){
-      // Reopening (Complete -> In Process) without a note: ask for one.
-      const info = await askUpdateInfo("Add a note for this update — what's being done, or an ETA. Leave blank to log a simple “In process”.", {});
-      if (info === null) return;           // cancelled — leave the status unchanged
-      note = info.note || "In process";
-    }
-  }
-  const id = current.id, wasComplete = newStatus === "Complete";
+  const eta = composerEta();
+  if (eta === false) return;
+  const note = $("d-note").value.trim() || defaultNote(newStatus);
+  const id = current.id, prevStatus = current.status || "Open", wasComplete = newStatus === "Complete";
   closeDetail();
   let out;
-  try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus, note:note, eta:eta }); }
+  try { out = await api({ action:"adminUpdate", password:getPw(), id:id, status:newStatus || "Open", note:note, eta:eta }); }
   catch(e){ toast("Network error — not saved."); return; }
   if (!out.ok){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
@@ -1322,15 +1318,15 @@ async function update(newStatus){
   }
   await loadReports(false, false);
   if (wasComplete) snack("Completed ✓", async () => {
-    try { await api({ action:"adminUpdate", password:getPw(), id:id, status:"In Process", note:"" }); } catch(e){}
+    try { await api({ action:"adminUpdate", password:getPw(), id:id, status:prevStatus, note:"" }); } catch(e){}
     loadReports(false, false);
   });
-  else toast(newStatus === "In Process" ? "Marked In Process." : "Updated.");
+  else toast(newStatus === "In Process" ? "Marked In Process." : "Moved back to Open.");
 }
 
 /* ---------- Request Update ---------- */
 async function requestUpdate(r){
-  const info = await askUpdateInfo("Request an update on this issue — optionally add a note for the team.", {});
+  const info = await askUpdateInfo("Request an update on this issue — optionally add a note for the team.");
   if (info === null) return;   // cancelled
   let out;
   try { out = await api({ action:"adminRequestUpdate", password:getPw(), id:r.id, note:info.note }); }
@@ -1412,7 +1408,7 @@ async function saveNote(){
   if (!current) return;
   const text = $("d-note").value.trim();
   if (!text){ toast("Type a note first."); return; }
-  const btn = $("d-note-save"); btn.disabled = true;
+  const btn = $("d-save"); btn.disabled = true;
   let out;
   try { out = await api({ action:"adminAddNote", password:getPw(), id:current.id, note:text }); }
   catch(e){ out = { ok:false, error:"Network error." }; }
@@ -1434,7 +1430,6 @@ async function saveNote(){
   renderNotes(current.notes);
   toast("Note added.");
 }
-$("d-note-save").addEventListener("click", saveNote);
 
 /* ---------- Edit the resident's description ---------- */
 function startEditDesc(){
@@ -1536,8 +1531,8 @@ function openBundleDetail(members){
       ? "Scroll through the reports below. Uncheck one to split it out of the bundle."
       : "Scroll through the reports below.") + '</p>' +
     '<div id="b-members"></div>' +
-    (canManage() ? '<textarea id="b-note" placeholder="Resolution note (optional) — emailed to each reporter"></textarea>' : '') +
-    '<div class="actions" id="b-actions"></div>';
+    '<div class="notes-head">Note for the whole bundle</div>' +
+    composerHtml("b", "Add a note — it's added to every report in this bundle");
 
   const list = b.querySelector("#b-members");
   members.forEach(m => {
@@ -1606,20 +1601,11 @@ function openBundleDetail(members){
     list.appendChild(card);
   });
 
-  const actions = b.querySelector("#b-actions");
-  const allComplete = members.every(m => m.status === "Complete");
-  const allInProc   = members.every(m => m.status === "In Process");
-  if (canManage()){
-    const allProposal = members.every(m => m.status === "Proposal for Review");
-    if (!allComplete && !allInProc)
-      actions.appendChild(mkBtn("Mark all In Process", "btn-start", () => updateBundle(bundleId, "In Process")));
-    if (!allComplete && !allProposal)
-      actions.appendChild(mkBtn("All Proposal for Review", "btn-proposal", () => updateBundle(bundleId, "Proposal for Review")));
-    if (!allComplete)
-      actions.appendChild(mkBtn("Mark all Complete", "btn-done", () => updateBundle(bundleId, "Complete")));
-    if (allComplete)
-      actions.appendChild(mkBtn("Reopen all", "btn-reopen", () => updateBundle(bundleId, "In Process")));
-  }
+  // Preselect the status only when every member shares it.
+  const first = members[0].status || "";
+  const shared = members.every(m => (m.status || "") === first) ? first : null;
+  initComposer("b", shared, () =>
+    composerChanged() ? updateBundle(bundleId, composer.to) : saveBundleNote(bundleId, members.length));
 
   $("scrim").classList.add("show");
   $("sheet").classList.add("show");
@@ -1629,34 +1615,38 @@ function openBundleDetail(members){
 
 async function updateBundle(bundleId, newStatus){
   if (!bundleId) return;
-  let note = ($("b-note") && $("b-note").value.trim()) || "";
-  let eta = "";
-  if (newStatus === "Complete"){
-    // Completing requires a resolution: Resolved / Proposal rejected / Other.
-    const info = await askUpdateInfo("Completing this bundle — how was it resolved?", { reason:true, initialNote: note });
-    if (info === null) return;             // cancelled — leave the status unchanged
-    note = info.note;
-  }
-  // Starting work on a bundle with any open member: estimated completion date
-  // required (the bundle's note comes from its own textarea, so hide the note field).
-  if (newStatus === "In Process" && currentBundle &&
-      currentBundle.some(m => m.status !== "In Process" && m.status !== "Complete")){
-    const info = await askUpdateInfo("Starting work on this bundle — set an estimated completion date.",
-      { requireEta: true, showNote: false });
-    if (info === null) return;             // cancelled — leave the status unchanged
-    eta = info.eta;
-  }
+  const eta = composerEta();
+  if (eta === false) return;
+  const note = $("b-note").value.trim() || defaultNote(newStatus);
   const wasComplete = newStatus === "Complete";
   closeDetail();
   let out;
-  try { out = await api({ action:"adminUpdate", password:getPw(), bundleId:bundleId, status:newStatus, note:note, eta:eta }); }
+  try { out = await api({ action:"adminUpdate", password:getPw(), bundleId:bundleId, status:newStatus || "Open", note:note, eta:eta }); }
   catch(e){ toast("Network error — not saved."); return; }
   if (!out.ok){
     if (out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
     toast(out.error || "Couldn't save."); return;
   }
   await loadReports(false, false);
-  toast(wasComplete ? "Bundle completed ✓" : (newStatus === "In Process" ? "Bundle marked In Process." : "Updated."));
+  toast(wasComplete ? "Bundle completed ✓" : (newStatus === "In Process" ? "Bundle marked In Process." : "Bundle moved back to Open."));
+}
+
+/* Note only (status untouched): append it to every report in the bundle. */
+async function saveBundleNote(bundleId, count){
+  const text = $("b-note").value.trim();
+  if (!text){ toast("Type a note first."); return; }
+  const btn = $("b-save"); btn.disabled = true;
+  let out;
+  try { out = await api({ action:"adminAddNote", password:getPw(), bundleId:bundleId, note:text }); }
+  catch(e){ out = { ok:false, error:"Network error." }; }
+  btn.disabled = false;
+  if (!out || !out.ok){
+    if (out && out.auth === false){ clearPw(); showLogin("Session expired — sign in again."); return; }
+    toast((out && out.error) || "Couldn't save note."); return;
+  }
+  closeDetail();
+  await loadReports(false, false);
+  toast("Note added to all " + count + " reports.");
 }
 
 async function unbundle(id){
