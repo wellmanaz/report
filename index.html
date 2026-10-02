@@ -361,8 +361,8 @@
 <div id="overlay">
   <div class="overlay-card">
     <div class="spinner"></div>
-    <div class="msg">Sending your report&hellip;</div>
-    <div class="sub-msg">Uploading the photo and details. This can take a few seconds.</div>
+    <div class="msg" id="overlay-msg">Sending your report&hellip;</div>
+    <div class="sub-msg" id="overlay-sub">Uploading the photo and details. This can take a few seconds.</div>
   </div>
 </div>
 
@@ -417,11 +417,23 @@ function insideCommunity(lat, lng){ return distToBoundaryMeters(lat, lng) <= BOU
 
 const state = {
   lat: null, lng: null,
-  locSource: null,           // "gps" | "pin" | "asset"
-  locId: new URLSearchParams(location.search).get("loc") || "",
+  locSource: null,           // "gps" | "pin"
   photoBase64: null,
+  photoBusy: false,          // a picked photo is still being resized
+  clientId: null,            // id of the report being filled in (see newReportId)
   map: null, marker: null
 };
+
+/* Id for one report. It is re-sent unchanged on every retry, so the server can
+   recognise a resend and never files the same report twice. */
+function newReportId(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  const b = new Uint8Array(16);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(b);
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  const h = Array.from(b, x => x.toString(16).padStart(2, "0")).join("");
+  return h.slice(0,8) + "-" + h.slice(8,12) + "-" + h.slice(12,16) + "-" + h.slice(16,20) + "-" + h.slice(20);
+}
 
 /* ---------- Location ---------- */
 function setLocStatus(html, cls){ const el=$("loc-status"); el.innerHTML=html; el.className=cls||""; }
@@ -509,14 +521,8 @@ function beginReport(){
   $("intro-view").style.display = "none";
   $("form-view").style.display = "block";
   window.scrollTo(0,0);
-  if (state.locId){
-    state.locSource = "asset";
-    setLocStatus("📍 Location: <strong>" + state.locId.replace(/[<>]/g,"") + "</strong> (from the QR code)", "ok");
-    $("adjust-btn").style.display = "inline-block";
-    updateSubmit();
-  } else {
-    startGeolocation();   // fresh GPS request, now
-  }
+  state.clientId = newReportId();
+  startGeolocation();   // fresh GPS request, now
 }
 $("start-btn").addEventListener("click", beginReport);
 
@@ -533,7 +539,7 @@ if (REPORTS_VIEW_URL){
 
 /* After a report is sent, "Report another issue" clears everything and drops
    the user straight back into a fresh report (one tap, fresh GPS) — no detour
-   through the intro screen. The QR location (state.locId) is intentionally kept. */
+   through the intro screen. */
 $("another-btn").addEventListener("click", () => {
   $("description").value = "";
   $("email").value = "";
@@ -541,6 +547,7 @@ $("another-btn").addEventListener("click", () => {
   $("urgent").checked = false;
   $("urgent-box").classList.remove("on");
   state.photoBase64 = null;
+  state.photoBusy = false;
   $("photo-camera").value = "";
   $("photo-library").value = "";
   $("photo-preview-wrap").style.display = "none";
@@ -568,6 +575,7 @@ function processPhoto(file){
   if (!file) return;
   const img = new Image();
   const url = URL.createObjectURL(file);
+  state.photoBusy = true;
   img.onload = () => {
     const MAX = 1280;
     let w = img.width, h = img.height;
@@ -578,14 +586,22 @@ function processPhoto(file){
     const c = document.createElement("canvas");
     c.width = w; c.height = h;
     c.getContext("2d").drawImage(img, 0, 0, w, h);
-    state.photoBase64 = c.toDataURL("image/jpeg", 0.75);
+    const dataUrl = c.toDataURL("image/jpeg", 0.75);
+    URL.revokeObjectURL(url);
+    state.photoBusy = false;
+    // A phone that fails to encode the picture hands back an empty "data:,".
+    // Catch it here instead of sending something the server will reject.
+    if (dataUrl.indexOf("data:image/") !== 0){
+      showError("That photo couldn't be prepared. Please try taking or choosing it again.");
+      return;
+    }
+    state.photoBase64 = dataUrl;
     $("photo-preview").src = state.photoBase64;
     $("photo-preview-wrap").style.display = "block";
     document.querySelector(".photo-row").style.display = "none";
-    URL.revokeObjectURL(url);
     updateSubmit();
   };
-  img.onerror = () => { URL.revokeObjectURL(url); showError("That file couldn't be read as an image."); };
+  img.onerror = () => { URL.revokeObjectURL(url); state.photoBusy = false; showError("That file couldn't be read as an image."); };
   img.src = url;
 }
 
@@ -609,10 +625,10 @@ function hasType(){
   return !!$("issue-type").value;
 }
 function hasLocation(){
-  return state.locSource === "asset" || (state.lat !== null && insideCommunity(state.lat, state.lng));
+  return state.lat !== null && insideCommunity(state.lat, state.lng);
 }
 function locationOutside(){
-  return state.locSource !== "asset" && state.lat !== null && !insideCommunity(state.lat, state.lng);
+  return state.lat !== null && !insideCommunity(state.lat, state.lng);
 }
 function updateSubmit(){
   const ok = hasContent() && hasType() && hasLocation();
@@ -678,16 +694,55 @@ function validateForSend(){
   return false;
 }
 
+const SEND_TIMEOUT_MS = 60000;    // give up on one attempt after this long
+const SLOW_NOTICE_MS = 12000;     // after this long, tell the user it's still working
+
+function setOverlay(msg, sub){
+  $("overlay-msg").textContent = msg;
+  $("overlay-sub").textContent = sub;
+}
+
+/* One attempt at sending. Returns the server's reply, or null when no usable
+   reply arrived: a timeout, a dropped connection, or one of Google's error
+   pages in place of the script's JSON. */
+async function postReport(payload){
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SEND_TIMEOUT_MS);
+  try {
+    // text/plain avoids a CORS preflight, which Apps Script doesn't handle
+    const res = await fetch(SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal
+    });
+    const out = JSON.parse(await res.text());
+    return out && typeof out === "object" ? out : null;
+  } catch (err) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 $("submit-btn").addEventListener("click", async () => {
+  if (state.photoBusy){
+    showError("Your photo is still being prepared — tap Send again in a moment.");
+    return;
+  }
   if (!validateForSend()) return;
   const btn = $("submit-btn");
   btn.disabled = true;
   btn.textContent = "Sending…";
   $("error-box").style.display = "none";
+  setOverlay("Sending your report…", "Uploading the photo and details. This can take a few seconds.");
   $("overlay").classList.add("show");
+  const slowTimer = setTimeout(() => {
+    setOverlay("Still sending…", "The server is slow right now. Please keep this page open.");
+  }, SLOW_NOTICE_MS);
 
   const payload = {
-    locId: state.locId,
+    clientId: state.clientId,            // same id on every retry of this report
     locSource: state.locSource,
     lat: state.lat,
     lng: state.lng,
@@ -700,25 +755,28 @@ $("submit-btn").addEventListener("click", async () => {
     website: $("website").value          // honeypot — must be empty; server drops if filled
   };
 
-  try {
-    // text/plain avoids a CORS preflight, which Apps Script doesn't handle
-    const res = await fetch(SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
-    });
-    const out = await res.json();
-    if (!out.ok) throw new Error(out.error || "Server rejected the report.");
-    $("overlay").classList.remove("show");
+  // No usable reply doesn't tell us whether the report was saved, so try once
+  // more. The server recognises the report's id, so a resend can't file it twice.
+  let out = await postReport(payload);
+  if (!out){
+    setOverlay("Still sending…", "The first try didn't get through. Trying once more.");
+    await new Promise(r => setTimeout(r, 2000));
+    out = await postReport(payload);
+  }
+  clearTimeout(slowTimer);
+  $("overlay").classList.remove("show");
+
+  if (out && out.ok){
     $("form-view").style.display = "none";
     $("success").style.display = "block";
     window.scrollTo(0,0);
-  } catch (err) {
-    $("overlay").classList.remove("show");
-    showError("Couldn't send the report — " + err.message + " Check your signal and try again.");
-    btn.disabled = false;
-    btn.textContent = "Send report";
+    return;
   }
+  showError(out
+    ? "Couldn't send the report — " + (out.error || "the server didn't accept it.")
+    : "We couldn't confirm your report was received. Check your signal and tap Send again — sending it again won't create a duplicate.");
+  btn.disabled = false;
+  btn.textContent = "Send report";
 });
 
 /* ---------- Hidden admin entrance: 5 taps on "dead" space ---------- */
