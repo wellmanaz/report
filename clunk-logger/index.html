@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#111418">
+<title>Clunk Logger</title>
+<style>
+  :root { --bg:#111418; --card:#1b2027; --line:#2c333d; --fg:#e8ecf1; --mut:#8b95a3; --acc:#3d8bfd; --red:#e5484d; --grn:#30a46c; --amb:#f5a524; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.4 system-ui, -apple-system, Roboto, sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:560px; margin:0 auto; padding:14px 14px 40px; }
+  h1 { font-size:20px; margin:4px 0 2px; }
+  .sub { color:var(--mut); font-size:13px; margin-bottom:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .card h2 { font-size:14px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:0 0 8px; }
+  label { display:block; font-size:13px; color:var(--mut); margin:8px 0 4px; }
+  select, input[type=text], textarea { width:100%; padding:10px; border-radius:8px; border:1px solid var(--line); background:#0d1014; color:var(--fg); font-size:16px; }
+  textarea { min-height:60px; resize:vertical; }
+  button { font:inherit; border:0; border-radius:10px; padding:14px; width:100%; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.4; }
+  .primary { background:var(--acc); color:#fff; }
+  .stop { background:var(--red); color:#fff; }
+  .ghost { background:#262d36; color:var(--fg); }
+  .mark { background:var(--amb); color:#111; font-size:22px; padding:28px 14px; margin-top:10px; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .stat { background:#0d1014; border-radius:8px; padding:8px; text-align:center; }
+  .stat b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+  .stat span { font-size:11px; color:var(--mut); }
+  canvas { width:100%; height:110px; background:#0d1014; border-radius:8px; display:block; margin-top:8px; }
+  .sess { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-top:1px solid var(--line); font-size:14px; }
+  .sess:first-child { border-top:0; }
+  .sess small { color:var(--mut); display:block; }
+  .x { background:none; color:var(--mut); width:auto; padding:6px 10px; }
+  .msg { font-size:13px; color:var(--mut); margin-top:8px; min-height:1em; }
+  .err { color:var(--red); }
+  ol { padding-left:20px; margin:4px 0; font-size:14px; }
+  ol li { margin-bottom:4px; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; background:#262d36; color:var(--mut); }
+  .pill.on { background:var(--grn); color:#fff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Clunk Logger</h1>
+  <div class="sub">Records audio, motion and GPS speed together so a noise can be lined up against what the car was doing.</div>
+
+  <div class="card" id="setupCard">
+    <h2>Where is the phone?</h2>
+    <label for="pos">Position in car</label>
+    <select id="pos">
+      <option>Driver floor (front left)</option>
+      <option>Passenger floor (front right)</option>
+      <option>Center console / cupholder</option>
+      <option>Dash (center)</option>
+      <option>2nd row left floor</option>
+      <option>2nd row right floor</option>
+      <option>3rd row / behind 2nd row</option>
+      <option>Cargo floor left</option>
+      <option>Cargo floor right</option>
+      <option>Cargo floor center (over rear axle)</option>
+      <option value="__other">Other (type below)</option>
+    </select>
+    <input type="text" id="posOther" placeholder="Describe position" style="display:none;margin-top:6px">
+    <label for="mount">How is it placed?</label>
+    <select id="mount">
+      <option>Flat on floor, screen up</option>
+      <option>Flat on seat, screen up</option>
+      <option>Wedged / taped down</option>
+      <option>Held in hand</option>
+      <option>In a mount</option>
+    </select>
+    <label for="test">Test type</label>
+    <select id="test">
+      <option>Stop-and-go cycles (0 → 10-15 mph → stop, repeat)</option>
+      <option>Normal driving</option>
+      <option>Forward / reverse in parking lot</option>
+      <option>Hard stops</option>
+      <option>Turning while starting / stopping</option>
+      <option>Engine running vs EV mode</option>
+      <option>Speed bumps / rough road</option>
+    </select>
+    <label for="notes">Notes (optional)</label>
+    <textarea id="notes" placeholder="e.g. A/C on, cold morning, noise felt through floor"></textarea>
+  </div>
+
+  <div class="card">
+    <h2>Record <span class="pill" id="gpsPill">GPS</span> <span class="pill" id="motPill">Motion</span> <span class="pill" id="micPill">Mic</span></h2>
+    <div class="stats">
+      <div class="stat"><b id="sSpd">–</b><span>mph</span></div>
+      <div class="stat"><b id="sAcc">–</b><span>horiz. g</span></div>
+      <div class="stat"><b id="sDb">–</b><span>audio dBFS</span></div>
+      <div class="stat"><b id="sTime">0:00</b><span>elapsed</span></div>
+      <div class="stat"><b id="sMarks">0</b><span>markers</span></div>
+      <div class="stat"><b id="sHz">–</b><span>motion Hz</span></div>
+    </div>
+    <canvas id="cv" width="1000" height="220"></canvas>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="btnStart">Start recording</button>
+      <button class="stop" id="btnStop" disabled>Stop</button>
+    </div>
+    <button class="mark" id="btnMark" disabled>HEARD IT</button>
+    <div style="margin-top:12px">
+      <label style="display:flex;align-items:center;gap:8px;color:var(--fg);font-size:14px"><input type="checkbox" id="monOn" style="width:20px;height:20px"> Listen live through headphones</label>
+      <label for="monGain">Listening boost: <b id="monGainV">+20 dB</b></label>
+      <input type="range" id="monGain" min="0" max="40" step="1" value="20" style="width:100%">
+      <div class="msg">Use headphones only; the phone speaker will feed back into the mic. Boost changes what you hear, not what's recorded.</div>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Saved recordings</h2>
+    <div id="list"><div class="msg">None yet.</div></div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary" id="btnExport" disabled>Export all (.zip)</button>
+      <button class="ghost" id="btnClear" disabled>Delete all</button>
+    </div>
+    <div class="msg" id="expMsg"></div>
+  </div>
+
+  <div class="card" id="revCard" style="display:none">
+    <h2>Review: <span id="revName" style="text-transform:none;letter-spacing:0;color:var(--fg)"></span></h2>
+    <div class="msg" style="margin-top:0">Tap the chart to jump. Listen with headphones and tap <b>Mark here</b> when you hear it. Red = your marks, gray = live taps.</div>
+    <canvas id="revCv" width="1000" height="260" style="height:150px;touch-action:none"></canvas>
+    <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--mut);margin-top:4px"><span id="revPos">0:00.0</span><span id="revSpd">– mph</span><span id="revDur">0:00</span></div>
+    <audio id="revAudio" preload="auto"></audio>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost" id="revBack">−3 s</button>
+      <button class="primary" id="revPlay">Play</button>
+      <button class="ghost" id="revFwd">+3 s</button>
+    </div>
+    <label for="revGain">Playback boost: <b id="revGainV">+20 dB</b></label>
+    <input type="range" id="revGain" min="0" max="40" step="1" value="20" style="width:100%">
+    <label style="display:flex;align-items:center;gap:8px;color:var(--fg);font-size:14px;margin-top:8px"><input type="checkbox" id="revSlow" style="width:20px;height:20px"> Half speed</label>
+    <button class="mark" id="revMark">Mark here</button>
+    <div class="row" style="margin-top:8px">
+      <button class="ghost" id="revUndo">Undo last mark</button>
+      <button class="ghost" id="revClose">Done</button>
+    </div>
+    <div class="msg" id="revMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>How to get useful data</h2>
+    <ol>
+      <li><b>A passenger runs the phone.</b> The driver doesn't touch it.</li>
+      <li>Use an empty parking lot. Lay the phone flat and let it sit still for 3 seconds after Start (it calibrates "down" from that).</li>
+      <li>Do 6–10 cycles: pull away gently, get to 10–15 mph, stop gently. Pause 3 s between cycles.</li>
+      <li>If a passenger is along, they can tap <b>HEARD IT</b> when they hear or feel the noise. That's optional: after the run, open <b>Review</b> on the saved recording, play it back boosted through headphones, and tap <b>Mark here</b> each time you hear it.</li>
+      <li>Stop, change position, repeat. Get at least driver floor, passenger floor, 2nd row, and cargo floor. Front vs rear and left vs right is what narrows it down.</li>
+      <li><b>Faint noise?</b> Put the phone flat on bare floor or carpet with its back touching the floor, as close as you can get to where the noise seems to come from. The motion sensor picks up a clunk through the body even when the mic barely hears it. Turn off the radio, fan and A/C.</li>
+      <li>Also do one forward/reverse run: roll forward a few feet, stop, roll back, stop.</li>
+      <li>Export the zip and send it to Claude.</li>
+    </ol>
+    <div class="msg">Keep this screen open while recording. Audio is recorded with noise suppression and auto-gain turned off so short clunks aren't filtered out. GPS positions are saved as meters from the starting point, not as map coordinates.</div>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const msg = (t, err) => { $('msg').textContent = t; $('msg').className = 'msg' + (err ? ' err' : ''); };
+
+$('pos').addEventListener('change', () => { $('posOther').style.display = $('pos').value === '__other' ? 'block' : 'none'; });
+
+/* ---------------- IndexedDB ---------------- */
+let dbP = null;
+function db() {
+  if (dbP) return dbP;
+  dbP = new Promise((res, rej) => {
+    const r = indexedDB.open('clunklogger', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('sessions', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  return dbP;
+}
+async function dbAll() { const d = await db(); return new Promise((res, rej) => { const q = d.transaction('sessions').objectStore('sessions').getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function dbPut(v) { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('sessions', 'readwrite'); t.objectStore('sessions').put(v); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function dbDel(id) { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('sessions', 'readwrite'); t.objectStore('sessions').delete(id); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function dbClear() { const d = await db(); return new Promise((res, rej) => { const t = d.transaction('sessions', 'readwrite'); t.objectStore('sessions').clear(); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+
+/* ---------------- Recording state ---------------- */
+let rec = null;   // active session
+let wakeLock = null;
+
+const workletSrc = `
+class Cap extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) this.port.postMessage(ch.slice(0));
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+async function start() {
+  msg('Requesting permissions…');
+  const pos = $('pos').value === '__other' ? ($('posOther').value.trim() || 'Other') : $('pos').value;
+  const s = {
+    id: Date.now(),
+    meta: {
+      app: 'Clunk Logger', version: 1,
+      vehicle: '2016 Toyota Highlander Hybrid',
+      position: pos, mount: $('mount').value, test: $('test').value, notes: $('notes').value.trim(),
+      startedAt: new Date().toISOString(), userAgent: navigator.userAgent,
+    },
+    t0: performance.now(),
+    motion: [], gps: [], marks: [], levels: [],
+    audioChunks: [], audioSamples: 0, sampleRate: 0, audioT0: null,
+    origin: null, lastMotionCount: 0, motionHz: 0,
+    gravity: null, stopFns: [],
+  };
+
+  // iOS-style motion permission (no-op on Android)
+  try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) await DeviceMotionEvent.requestPermission(); } catch (e) {}
+
+  // Microphone with all processing off
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+  } catch (e) { msg('Microphone permission is needed: ' + e.message, true); return; }
+  const track = stream.getAudioTracks()[0];
+  try { s.meta.audioSettings = track.getSettings(); } catch (e) {}
+
+  const ac = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+  s.sampleRate = ac.sampleRate;
+  const blobUrl = URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' }));
+  await ac.audioWorklet.addModule(blobUrl);
+  const src = ac.createMediaStreamSource(stream);
+  const node = new AudioWorkletNode(ac, 'cap');
+  const analyser = ac.createAnalyser(); analyser.fftSize = 2048;
+  src.connect(node); src.connect(analyser);
+  const sink = ac.createGain(); sink.gain.value = 0; node.connect(sink); sink.connect(ac.destination);
+  // Live headphone monitor: high-pass (cut road rumble below 40 Hz) -> boost -> limiter
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 40;
+  const mon = ac.createGain(); mon.gain.value = 0;
+  const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1;
+  src.connect(hp); hp.connect(mon); mon.connect(lim); lim.connect(ac.destination);
+  s.monitor = mon; s.ac = ac;
+  applyMonitor(s);
+  node.port.onmessage = ev => {
+    const buf = ev.data;
+    if (s.audioT0 === null) s.audioT0 = performance.now() - s.t0 - (buf.length / s.sampleRate) * 1000;
+    s.audioChunks.push(buf); s.audioSamples += buf.length;
+  };
+  s.stopFns.push(() => { try { node.port.onmessage = null; src.disconnect(); node.disconnect(); } catch (e) {} track.stop(); ac.close(); URL.revokeObjectURL(blobUrl); });
+  $('micPill').classList.add('on');
+
+  // Motion
+  const onMotion = e => {
+    const t = performance.now() - s.t0;
+    const a = e.acceleration || {}, g = e.accelerationIncludingGravity || {}, r = e.rotationRate || {};
+    s.motion.push([t, a.x, a.y, a.z, g.x, g.y, g.z, r.alpha, r.beta, r.gamma]);
+    if (g.x != null) {
+      if (!s.gravity) s.gravity = [g.x, g.y, g.z];
+      else { const k = 0.02; s.gravity = s.gravity.map((v, i) => v + k * ([g.x, g.y, g.z][i] - v)); }
+      const lin = [g.x - s.gravity[0], g.y - s.gravity[1], g.z - s.gravity[2]];
+      const gn = Math.hypot(...s.gravity) || 9.81, u = s.gravity.map(v => v / gn);
+      const vert = lin[0] * u[0] + lin[1] * u[1] + lin[2] * u[2];
+      const h = Math.sqrt(Math.max(0, lin[0] ** 2 + lin[1] ** 2 + lin[2] ** 2 - vert ** 2));
+      s.liveH = h / 9.80665;
+    }
+  };
+  window.addEventListener('devicemotion', onMotion);
+  s.stopFns.push(() => window.removeEventListener('devicemotion', onMotion));
+
+  // GPS
+  if ('geolocation' in navigator) {
+    const wid = navigator.geolocation.watchPosition(p => {
+      const t = performance.now() - s.t0, c = p.coords;
+      if (!s.origin) s.origin = [c.latitude, c.longitude];
+      const R = 6371000, lat0 = s.origin[0] * Math.PI / 180;
+      const e = (c.longitude - s.origin[1]) * Math.PI / 180 * R * Math.cos(lat0);
+      const n = (c.latitude - s.origin[0]) * Math.PI / 180 * R;
+      s.gps.push([t, p.timestamp, +e.toFixed(2), +n.toFixed(2), c.speed, c.heading, c.accuracy]);
+      s.liveSpd = c.speed;
+      $('gpsPill').classList.add('on');
+    }, err => { msg('GPS: ' + err.message + ' (recording continues without speed)', true); }, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+    s.stopFns.push(() => navigator.geolocation.clearWatch(wid));
+  }
+
+  // Screen awake
+  try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch (e) {}
+
+  rec = s;
+  rec.analyser = analyser; rec.fbuf = new Float32Array(analyser.fftSize);
+  rec.timer = setInterval(tick, 100);
+  rec.hzTimer = setInterval(() => { rec.motionHz = rec.motion.length - rec.lastMotionCount; rec.lastMotionCount = rec.motion.length; if (rec.motionHz > 0) $('motPill').classList.add('on'); }, 1000);
+  $('btnStart').disabled = true; $('btnStop').disabled = false; $('btnMark').disabled = false;
+  document.querySelectorAll('#setupCard select, #setupCard input, #setupCard textarea').forEach(el => el.disabled = true);
+  msg('Recording. Keep the phone still for 3 seconds.');
+}
+
+function applyMonitor(s) {
+  const dbv = +$('monGain').value;
+  $('monGainV').textContent = '+' + dbv + ' dB';
+  if (!s || !s.monitor) return;
+  const target = $('monOn').checked ? Math.pow(10, dbv / 20) : 0;
+  s.monitor.gain.setTargetAtTime(target, s.ac.currentTime, 0.05);
+  if (s.ac.state === 'suspended') s.ac.resume();
+}
+$('monGain').addEventListener('input', () => applyMonitor(rec));
+$('monOn').addEventListener('change', () => applyMonitor(rec));
+
+const hist = []; // live plot: [db, h, spd]
+function tick() {
+  if (!rec) return;
+  const t = performance.now() - rec.t0;
+  rec.analyser.getFloatTimeDomainData(rec.fbuf);
+  let sum = 0, pk = 0; for (const v of rec.fbuf) { sum += v * v; pk = Math.max(pk, Math.abs(v)); }
+  const db = 10 * Math.log10(sum / rec.fbuf.length + 1e-12);
+  rec.levels.push([t, +db.toFixed(1), +pk.toFixed(4)]);
+  $('sDb').textContent = db.toFixed(0);
+  $('sAcc').textContent = rec.liveH != null ? rec.liveH.toFixed(2) : '–';
+  $('sSpd').textContent = rec.liveSpd != null ? (rec.liveSpd * 2.23694).toFixed(1) : '–';
+  const sec = Math.floor(t / 1000); $('sTime').textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+  $('sHz').textContent = rec.motionHz || '–';
+  hist.push([db, rec.liveH || 0, (rec.liveSpd || 0) * 2.23694, false]);
+  if (hist.length > 300) hist.shift();
+  draw();
+}
+
+function draw() {
+  const cv = $('cv'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  const n = hist.length, dx = W / 300;
+  const line = (idx, col, f) => { g.strokeStyle = col; g.lineWidth = 3; g.beginPath(); hist.forEach((p, i) => { const y = H - f(p[idx]) * H; i ? g.lineTo(i * dx, y) : g.moveTo(i * dx, y); }); g.stroke(); };
+  line(2, '#30a46c', v => Math.min(1, v / 25));
+  line(1, '#3d8bfd', v => Math.min(1, v / 0.4));
+  line(0, '#f5a524', v => Math.max(0, Math.min(1, (v + 80) / 80)));
+  hist.forEach((p, i) => { if (p[3]) { g.fillStyle = '#e5484d'; g.fillRect(i * dx - 2, 0, 4, H); } });
+  g.font = '22px system-ui'; g.fillStyle = '#30a46c'; g.fillText('speed', 10, 26); g.fillStyle = '#3d8bfd'; g.fillText('accel', 90, 26); g.fillStyle = '#f5a524'; g.fillText('audio', 170, 26);
+}
+
+function mark() {
+  if (!rec) return;
+  const t = performance.now() - rec.t0;
+  rec.marks.push([t, rec.liveSpd ?? null, 'live']);
+  if (hist.length) hist[hist.length - 1][3] = true;
+  $('sMarks').textContent = rec.marks.length;
+  if (navigator.vibrate) navigator.vibrate(60);
+}
+
+async function stop() {
+  if (!rec) return;
+  const s = rec; rec = null;
+  clearInterval(s.timer); clearInterval(s.hzTimer);
+  s.stopFns.forEach(f => { try { f(); } catch (e) {} });
+  try { wakeLock && wakeLock.release(); } catch (e) {}
+  wakeLock = null;
+  $('btnStart').disabled = false; $('btnStop').disabled = true; $('btnMark').disabled = true;
+  document.querySelectorAll('#setupCard select, #setupCard input, #setupCard textarea').forEach(el => el.disabled = false);
+  ['gpsPill', 'motPill', 'micPill'].forEach(id => $(id).classList.remove('on'));
+  msg('Saving…');
+
+  const dur = performance.now() - s.t0;
+  s.meta.durationSec = +(dur / 1000).toFixed(2);
+  s.meta.sampleRate = s.sampleRate;
+  s.meta.audioStartOffsetMs = s.audioT0 != null ? +s.audioT0.toFixed(1) : null;
+  s.meta.audioDurationSec = +(s.audioSamples / (s.sampleRate || 1)).toFixed(2);
+  s.meta.counts = { motion: s.motion.length, gps: s.gps.length, markers: s.marks.length };
+  s.meta.timeBase = 'All t_ms columns are milliseconds since Start. Audio sample i is at audioStartOffsetMs + 1000*i/sampleRate.';
+
+  const wav = encodeWav(s.audioChunks, s.audioSamples, s.sampleRate);
+  const files = {
+    'meta.json': JSON.stringify(s.meta, null, 2),
+    'motion.csv': csv('t_ms,ax,ay,az,gx,gy,gz,rot_alpha,rot_beta,rot_gamma', s.motion),
+    'gps.csv': csv('t_ms,fix_epoch_ms,east_m,north_m,speed_mps,heading_deg,accuracy_m', s.gps),
+    'markers.csv': csv('t_ms,speed_mps,source', s.marks),
+    'levels.csv': csv('t_ms,rms_dbfs,peak', s.levels),
+  };
+  try {
+    await dbPut({ id: s.id, meta: s.meta, files, wav });
+    msg('Saved: ' + s.meta.position + ' (' + Math.round(s.meta.durationSec) + ' s, ' + s.marks.length + ' markers).');
+  } catch (e) { msg('Save failed: ' + e.message, true); }
+  $('sMarks').textContent = '0';
+  hist.length = 0;
+  refresh();
+}
+
+function csv(head, rows) {
+  const f = v => v == null || Number.isNaN(v) ? '' : (typeof v === 'number' ? +v.toFixed(4) : v);
+  return head + '\n' + rows.map(r => r.map(f).join(',')).join('\n') + '\n';
+}
+
+function encodeWav(chunks, n, sr) {
+  const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); ws(8, 'WAVE'); ws(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, 'data'); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (let i = 0; i < c.length; i++) { const x = Math.max(-1, Math.min(1, c[i])); v.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); o += 2; }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+/* ---------------- Zip (store, no compression) ---------------- */
+const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = crcT[(c ^ u8[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+async function makeZip(entries) { // [{name, data: Uint8Array}]
+  const enc = new TextEncoder(), parts = [], central = [];
+  let off = 0;
+  for (const e of entries) {
+    const nm = enc.encode(e.name), d = e.data, crc = crc32(d);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, 0, true); h.setUint16(12, 0x21, true); h.setUint32(14, crc, true);
+    h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    parts.push(h.buffer, nm, d);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint16(10, 0, true); c.setUint16(12, 0, true); c.setUint16(14, 0x21, true); c.setUint32(16, crc, true);
+    c.setUint32(20, d.length, true); c.setUint32(24, d.length, true); c.setUint16(28, nm.length, true);
+    c.setUint32(42, off, true);
+    central.push(c.buffer, nm);
+    off += 30 + nm.length + d.length;
+  }
+  const cs = central.reduce((a, b) => a + b.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cs, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+
+async function exportAll() {
+  $('expMsg').textContent = 'Building zip…';
+  try {
+    await saveReview();
+    const all = (await dbAll()).sort((a, b) => a.id - b.id);
+    const enc = new TextEncoder(), entries = [];
+    all.forEach((s, i) => {
+      const dir = String(i + 1).padStart(2, '0') + '_' + slug(s.meta.position) + '/';
+      for (const [n, txt] of Object.entries(s.files)) entries.push({ name: dir + n, data: enc.encode(txt) });
+      entries.push({ name: dir + 'audio.wav', blob: s.wav });
+    });
+    for (const e of entries) if (e.blob) e.data = new Uint8Array(await e.blob.arrayBuffer());
+    const zip = await makeZip(entries);
+    const name = 'highlander-noise-' + new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-') + '.zip';
+    const file = new File([zip], name, { type: 'application/zip' });
+    let shared = false;
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); shared = true; } catch (e) { if (e.name === 'AbortError') shared = true; }
+    }
+    if (!shared) {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(zip); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+    $('expMsg').textContent = name + ' (' + (zip.size / 1048576).toFixed(1) + ' MB)';
+  } catch (e) { $('expMsg').textContent = 'Export failed: ' + e.message; $('expMsg').className = 'msg err'; }
+}
+
+async function refresh() {
+  let all = [];
+  try { all = (await dbAll()).sort((a, b) => a.id - b.id); } catch (e) {}
+  const L = $('list');
+  if (!all.length) { L.innerHTML = '<div class="msg">None yet.</div>'; }
+  else {
+    L.innerHTML = '';
+    all.forEach((s, i) => {
+      const d = document.createElement('div'); d.className = 'sess';
+      const info = document.createElement('div');
+      info.innerHTML = '<b></b><small></small>';
+      info.querySelector('b').textContent = (i + 1) + '. ' + s.meta.position;
+      info.querySelector('small').textContent = s.meta.test.split(' (')[0] + ' · ' + Math.round(s.meta.durationSec) + ' s · ' + s.meta.counts.markers + ' markers · ' + s.meta.counts.gps + ' GPS fixes';
+      const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.setAttribute('aria-label', 'Delete');
+      let armed = false;
+      x.onclick = async () => { if (!armed) { armed = true; x.textContent = 'Delete?'; setTimeout(() => { armed = false; x.textContent = '✕'; }, 3000); return; } await dbDel(s.id); refresh(); };
+      const rv = document.createElement('button'); rv.className = 'ghost'; rv.textContent = 'Review'; rv.style.width = 'auto'; rv.style.padding = '8px 12px';
+      rv.onclick = () => openReview(s.id).catch(e => { $('revMsg').textContent = 'Could not open: ' + e.message; });
+      const btns = document.createElement('div'); btns.style.display = 'flex'; btns.style.gap = '4px'; btns.append(rv, x);
+      d.append(info, btns); L.append(d);
+    });
+  }
+  $('btnExport').disabled = !all.length; $('btnClear').disabled = !all.length;
+}
+
+/* ---------------- Review / post-ride marking ---------------- */
+let rv = null;
+const parseCsv = txt => txt.trim().split('\n').slice(1).filter(Boolean).map(l => l.split(','));
+const fmtT = ms => { const s = Math.max(0, ms) / 1000; return Math.floor(s / 60) + ':' + (s % 60).toFixed(1).padStart(4, '0'); };
+
+async function openReview(id) {
+  if (rec) { msg('Stop recording before reviewing.', true); return; }
+  closeReview();
+  const s = (await dbAll()).find(x => x.id === id);
+  if (!s) return;
+  const gps = parseCsv(s.files['gps.csv']).map(r => [+r[0], r[4] === '' ? null : +r[4]]).filter(r => r[1] != null);
+  const lv = parseCsv(s.files['levels.csv']).map(r => [+r[0], +r[1]]);
+  const marks = parseCsv(s.files['markers.csv']).map(r => [+r[0], r[1] === '' ? null : +r[1], r[2] || 'live']);
+  const off = s.meta.audioStartOffsetMs || 0;
+  const audio = $('revAudio');
+  const url = URL.createObjectURL(s.wav);
+  audio.src = url;
+  // Audio chain: high-pass 40 Hz -> boost -> limiter. Built once; the element can only be wired once.
+  if (!audio._chain) {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ac.createMediaElementSource(audio);
+    const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 40;
+    const g = ac.createGain();
+    const lim = ac.createDynamicsCompressor(); lim.threshold.value = -6; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.001; lim.release.value = 0.1;
+    src.connect(hp); hp.connect(g); g.connect(lim); lim.connect(ac.destination);
+    audio._chain = { ac, g };
+  }
+  rv = { s, gps, lv, marks, off, url, dur: s.meta.durationSec * 1000, dirty: false, order: [] };
+  $('revName').textContent = s.meta.position;
+  $('revDur').textContent = fmtT(rv.dur);
+  $('revCard').style.display = 'block';
+  $('revMsg').textContent = '';
+  setRevGain();
+  audio.playbackRate = $('revSlow').checked ? 0.5 : 1;
+  drawReview();
+  $('revCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+function speedAt(t) {
+  const g = rv.gps; if (!g.length) return null;
+  let i = g.findIndex(r => r[0] >= t);
+  if (i === -1) return g[g.length - 1][1];
+  if (i === 0) return g[0][1];
+  const [t0, v0] = g[i - 1], [t1, v1] = g[i];
+  return v0 + (v1 - v0) * (t - t0) / ((t1 - t0) || 1);
+}
+const curT = () => rv.off + $('revAudio').currentTime * 1000;
+
+function drawReview() {
+  if (!rv) return;
+  const cv = $('revCv'), g = cv.getContext('2d'), W = cv.width, H = cv.height, D = rv.dur || 1;
+  const X = t => t / D * W;
+  g.clearRect(0, 0, W, H);
+  // audio level
+  g.strokeStyle = '#f5a524'; g.lineWidth = 2; g.beginPath();
+  rv.lv.forEach(([t, db], i) => { const y = H - Math.max(0, Math.min(1, (db + 80) / 80)) * H; i ? g.lineTo(X(t), y) : g.moveTo(X(t), y); });
+  g.stroke();
+  // speed
+  const vmax = Math.max(5, ...rv.gps.map(r => r[1]));
+  g.strokeStyle = '#30a46c'; g.lineWidth = 3; g.beginPath();
+  rv.gps.forEach(([t, v], i) => { const y = H - v / vmax * H * 0.9; i ? g.lineTo(X(t), y) : g.moveTo(X(t), y); });
+  g.stroke();
+  // marks
+  rv.marks.forEach(([t, , src]) => { g.fillStyle = src === 'live' ? '#8b95a3' : '#e5484d'; g.fillRect(X(t) - 2, 0, 4, H); });
+  // playhead
+  g.fillStyle = '#fff'; g.fillRect(X(curT()) - 1.5, 0, 3, H);
+  g.font = '22px system-ui'; g.fillStyle = '#30a46c'; g.fillText('speed', 10, 26); g.fillStyle = '#f5a524'; g.fillText('audio', 90, 26);
+  const t = curT(); $('revPos').textContent = fmtT(t);
+  const v = speedAt(t); $('revSpd').textContent = v == null ? '– mph' : (v * 2.23694).toFixed(1) + ' mph';
+}
+function loop() { if (rv && !$('revAudio').paused) { drawReview(); requestAnimationFrame(loop); } }
+
+function setRevGain() {
+  const dbv = +$('revGain').value; $('revGainV').textContent = '+' + dbv + ' dB';
+  const ch = $('revAudio')._chain; if (ch) ch.g.gain.value = Math.pow(10, dbv / 20);
+}
+$('revGain').addEventListener('input', setRevGain);
+$('revSlow').addEventListener('change', () => { $('revAudio').playbackRate = $('revSlow').checked ? 0.5 : 1; });
+$('revPlay').onclick = async () => {
+  const a = $('revAudio'); if (!rv) return;
+  try { await a._chain.ac.resume(); } catch (e) {}
+  if (a.paused) { await a.play(); requestAnimationFrame(loop); } else a.pause();
+};
+$('revAudio').addEventListener('play', () => { $('revPlay').textContent = 'Pause'; });
+$('revAudio').addEventListener('pause', () => { $('revPlay').textContent = 'Play'; drawReview(); });
+$('revAudio').addEventListener('ended', () => { $('revPlay').textContent = 'Play'; });
+const seekBy = d => { const a = $('revAudio'); a.currentTime = Math.max(0, Math.min(a.duration || 0, a.currentTime + d)); drawReview(); };
+$('revBack').onclick = () => seekBy(-3);
+$('revFwd').onclick = () => seekBy(3);
+$('revCv').addEventListener('pointerdown', e => {
+  if (!rv) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  const t = (e.clientX - r.left) / r.width * rv.dur;
+  const a = $('revAudio'); a.currentTime = Math.max(0, (t - rv.off) / 1000); drawReview();
+});
+$('revMark').onclick = () => {
+  if (!rv) return;
+  // Reaction-time compensation: listeners tap ~0.3 s after the sound (more at half speed, in recording time it's less).
+  const lag = $('revSlow').checked ? 150 : 300;
+  const t = Math.max(0, curT() - lag);
+  rv.marks.push([t, speedAt(t), 'review']); rv.order.push(t); rv.marks.sort((a, b) => a[0] - b[0]);
+  rv.dirty = true; drawReview();
+  if (navigator.vibrate) navigator.vibrate(40);
+  $('revMsg').textContent = rv.marks.filter(m => m[2] === 'review').length + ' review marks';
+};
+$('revUndo').onclick = () => {
+  if (!rv) return;
+  if (!rv.order.length) { $('revMsg').textContent = 'Nothing to undo this session.'; return; }
+  const t = rv.order.pop();
+  const i = rv.marks.findIndex(m => m[2] === 'review' && m[0] === t);
+  if (i >= 0) rv.marks.splice(i, 1);
+  rv.dirty = true; drawReview();
+  $('revMsg').textContent = rv.marks.filter(m => m[2] === 'review').length + ' review marks';
+};
+async function saveReview() {
+  if (!rv || !rv.dirty) return;
+  const s = rv.s;
+  s.files['markers.csv'] = csv('t_ms,speed_mps,source', rv.marks);
+  s.meta.counts.markers = rv.marks.length;
+  s.files['meta.json'] = JSON.stringify(s.meta, null, 2);
+  await dbPut(s); rv.dirty = false;
+}
+async function closeReview() {
+  if (!rv) return;
+  $('revAudio').pause();
+  try { await saveReview(); } catch (e) { $('revMsg').textContent = 'Save failed: ' + e.message; return; }
+  URL.revokeObjectURL(rv.url); rv = null;
+  $('revCard').style.display = 'none';
+  refresh();
+}
+$('revClose').onclick = closeReview;
+
+let clearArmed = false;
+$('btnClear').onclick = async () => {
+  if (!clearArmed) { clearArmed = true; $('btnClear').textContent = 'Tap again to delete all'; setTimeout(() => { clearArmed = false; $('btnClear').textContent = 'Delete all'; }, 3000); return; }
+  await dbClear(); clearArmed = false; $('btnClear').textContent = 'Delete all'; refresh();
+};
+$('btnStart').onclick = () => start().catch(e => msg('Could not start: ' + e.message, true));
+$('btnStop').onclick = stop;
+$('btnMark').onclick = mark;
+$('btnExport').onclick = exportAll;
+document.addEventListener('visibilitychange', async () => { if (rec && document.visibilityState === 'visible' && !wakeLock) { try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {} } });
+if (!window.isSecureContext) msg('This page must be opened over https for sensors and microphone to work.', true);
+refresh(); draw();
+})();
+</script>
+</body>
+</html>
